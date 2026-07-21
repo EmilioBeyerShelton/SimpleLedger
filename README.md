@@ -35,6 +35,11 @@ update the three `<script src="...">` URLs to point there instead.
 - **Groups**: create a group with a few members, then split any expense
   across them. Splitting is even by default, editable per person, and just
   tracks who owes what — it doesn't move extra money on its own.
+- **Search and filters**: the History tab has a search bar (matches title,
+  and the From/To account's title or path) and a filter icon next to it —
+  tap it for a modal to narrow by From account, To account, a date range,
+  and/or group. The badge on the icon shows how many filters are active;
+  "Clear filters" in the modal resets them.
 - **Settings tab**: this is where data storage lives — link/unlink a file
   on disk via the File System Access API, and download/upload manual JSON
   backups. Everywhere else (the header on every page) just shows a short

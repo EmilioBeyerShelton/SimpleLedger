@@ -6,7 +6,7 @@
   // narrow things down), clicking a result selects it, and blurring with
   // an exact title/path match auto-selects too. Blurring with no match
   // reverts to whatever was selected before.
-  function AccountPicker({ accounts, value, onChange, placeholder, inputId }) {
+  function AccountPicker({ accounts, value, onChange, placeholder, inputId, allowClear }) {
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState(false);
 
@@ -27,11 +27,22 @@
       setOpen(false);
     }
 
+    function clearSelection() {
+      onChange('');
+      setQuery('');
+      setOpen(false);
+    }
+
     function handleBlur() {
       // Delay so a click on a dropdown option (which also blurs the
       // input) has a chance to register first.
       setTimeout(() => {
         const typed = query.trim().toLowerCase();
+        if (allowClear && !typed) {
+          onChange('');
+          setOpen(false);
+          return;
+        }
         const exact = accounts.find(
           a => a.id.toLowerCase() === typed || a.title.toLowerCase() === typed
         );
@@ -60,6 +71,11 @@
         />
         ${open && html`
           <div class="account-picker-list">
+            ${allowClear && html`
+              <div class="account-picker-option account-picker-clear" onMouseDown=${e => { e.preventDefault(); clearSelection(); }}>
+                <span class="account-picker-title">Any account</span>
+              </div>
+            `}
             ${filtered.length === 0 && html`
               <div class="account-picker-empty">No matching accounts</div>
             `}
