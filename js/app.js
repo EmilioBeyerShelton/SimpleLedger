@@ -5,7 +5,7 @@
 
   function App() {
     const store = window.Ledger.useStore();
-    const [tab, setTab] = useState('history');
+    const [tab, setTab] = useState('transactions');
     const [toast, setToast] = useState('');
 
     function flash(msg) {
@@ -43,7 +43,7 @@
         <${TopBar} fileStatus=${store.fileStatus} />
 
         <main class="main-content">
-          ${tab === 'history' && html`
+          ${tab === 'transactions' && html`
             <${HistoryView}
               data=${store.data}
               onAdd=${addTransaction}

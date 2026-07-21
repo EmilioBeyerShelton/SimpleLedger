@@ -2,7 +2,7 @@
   const { html } = window.Ledger;
 
   const TABS = [
-    { id: 'history', label: 'History', icon: '≡' },
+    { id: 'transactions', label: 'Transactions', icon: '≡' },
     { id: 'report', label: 'Report', icon: '◔' },
     { id: 'accounts', label: 'Accounts', icon: '▤' },
     { id: 'groups', label: 'Groups', icon: '◎' },

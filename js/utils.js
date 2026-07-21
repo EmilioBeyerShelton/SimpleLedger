@@ -87,9 +87,34 @@
     return totals;
   }
 
+  // ---------- date grouping ----------
+  const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  function dateBucket(dateStr, today) {
+    if (!dateStr) return '';
+    const now = today || new Date();
+    const d = new Date(dateStr + 'T00:00:00');
+    const t = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.round((t - d) / 86400000);
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+
+    const dow = t.getDay(); // 0 = Sunday
+    const daysSinceMonday = (dow + 6) % 7;
+    const startOfWeek = new Date(t);
+    startOfWeek.setDate(t.getDate() - daysSinceMonday);
+
+    if (d >= startOfWeek) return 'This week';
+
+    const label = MONTH_NAMES[d.getMonth()];
+    return d.getFullYear() === t.getFullYear() ? label : `${label} ${d.getFullYear()}`;
+  }
+
   window.Ledger.utils = {
     nextId, todayStr, formatAmount, formatDate,
     accountBalance, accountName, groupName,
-    splitEqually, groupMemberTotals, normalizeAccountId
+    splitEqually, groupMemberTotals, normalizeAccountId,
+    dateBucket
   };
 })();

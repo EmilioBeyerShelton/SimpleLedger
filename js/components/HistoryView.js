@@ -1,6 +1,6 @@
 (function () {
   const { html, useState, useMemo } = window.Ledger;
-  const { formatAmount, formatDate, accountName, groupName } = window.Ledger.utils;
+  const { formatAmount, formatDate, accountName, groupName, dateBucket } = window.Ledger.utils;
 
   function HistoryView({ data, onAdd, onUpdate, onDelete }) {
     const [editingId, setEditingId] = useState(null);
@@ -8,6 +8,7 @@
     const [showFilter, setShowFilter] = useState(false);
 
     const [searchQuery, setSearchQuery] = useState('');
+    const [sortOrder, setSortOrder] = useState('desc'); // 'desc' = newest first
     const [filterFrom, setFilterFrom] = useState('');
     const [filterTo, setFilterTo] = useState('');
     const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -16,10 +17,12 @@
 
     const { Modal, ExpenseForm, AccountPicker } = window.Ledger.components;
 
-    const sorted = useMemo(
-      () => [...data.transactions].sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id - a.id),
-      [data.transactions]
-    );
+    const sorted = useMemo(() => {
+      const dir = sortOrder === 'asc' ? 1 : -1;
+      return [...data.transactions].sort((a, b) =>
+        dir * (a.date || '').localeCompare(b.date || '') || dir * (a.id - b.id)
+      );
+    }, [data.transactions, sortOrder]);
 
     const filtered = useMemo(() => {
       const q = searchQuery.trim().toLowerCase();
@@ -43,6 +46,24 @@
       });
     }, [sorted, searchQuery, filterFrom, filterTo, filterDateFrom, filterDateTo, filterGroupId, data.accounts]);
 
+    // Group consecutive same-bucket rows under a divider ("Today",
+    // "Yesterday", "This week", or a written-out month). Relies on the
+    // list already being date-sorted, so same-bucket rows are contiguous.
+    const rows = useMemo(() => {
+      const today = new Date();
+      const out = [];
+      let lastBucket = null;
+      filtered.forEach(t => {
+        const bucket = dateBucket(t.date, today);
+        if (bucket !== lastBucket) {
+          out.push({ type: 'divider', label: bucket, key: `divider-${bucket}-${t.id}` });
+          lastBucket = bucket;
+        }
+        out.push({ type: 'tx', tx: t, key: t.id });
+      });
+      return out;
+    }, [filtered]);
+
     const activeFilterCount = [filterFrom, filterTo, filterDateFrom, filterDateTo, filterGroupId].filter(Boolean).length;
 
     function clearFilters() {
@@ -58,7 +79,7 @@
     return html`
       <div class="view">
         <div class="view-head">
-          <h2 class="view-title">History</h2>
+          <h2 class="view-title">Transactions</h2>
           <button class="accent small" onClick=${() => setShowAdd(true)}>+ Add expense</button>
         </div>
 
@@ -84,18 +105,21 @@
         ${data.transactions.length > 0 && filtered.length === 0 && html`<p class="empty-note">No expenses match your search or filters.</p>`}
 
         <div class="expense-list">
-          ${filtered.map(t => html`
-            <div class="expense-row" onClick=${() => setEditingId(t.id)}>
-              <div class="expense-row-main">
-                <div class="expense-row-title">${t.title}</div>
-                <div class="expense-row-meta">
-                  ${formatDate(t.date)} · ${accountName(data.accounts, t.from)} → ${accountName(data.accounts, t.to)}
-                  ${t.groupId ? html` · <span class="chip">${groupName(data.groups, t.groupId)}</span>` : ''}
+          ${rows.map(row => row.type === 'divider'
+            ? html`<div class="date-divider" key=${row.key}><span>${row.label}</span></div>`
+            : html`
+              <div class="expense-row" key=${row.key} onClick=${() => setEditingId(row.tx.id)}>
+                <div class="expense-row-main">
+                  <div class="expense-row-title">${row.tx.title}</div>
+                  <div class="expense-row-meta">
+                    ${formatDate(row.tx.date)} · ${accountName(data.accounts, row.tx.from)} → ${accountName(data.accounts, row.tx.to)}
+                    ${row.tx.groupId ? html` · <span class="chip">${groupName(data.groups, row.tx.groupId)}</span>` : ''}
+                  </div>
                 </div>
+                <div class="expense-row-amount">${formatAmount(row.tx.amount)}</div>
               </div>
-              <div class="expense-row-amount">${formatAmount(t.amount)}</div>
-            </div>
-          `)}
+            `
+          )}
         </div>
 
         ${editing && html`
@@ -131,6 +155,22 @@
         ${showFilter && html`
           <${Modal} title="Filter expenses" onClose=${() => setShowFilter(false)}>
             <div class="expense-form">
+              <div class="form-row">
+                <label>Sort by date</label>
+                <div class="chart-type-toggle">
+                  <button
+                    type="button"
+                    class=${sortOrder === 'desc' ? 'accent small' : 'ghost small'}
+                    onClick=${() => setSortOrder('desc')}
+                  >Newest first</button>
+                  <button
+                    type="button"
+                    class=${sortOrder === 'asc' ? 'accent small' : 'ghost small'}
+                    onClick=${() => setSortOrder('asc')}
+                  >Oldest first</button>
+                </div>
+              </div>
+
               <div class="two-col">
                 <div class="form-row">
                   <label for="filt-from">From account</label>
