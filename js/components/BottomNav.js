@@ -5,7 +5,7 @@
     { id: 'transactions', label: 'Transactions', icon: '≡' },
     { id: 'report', label: 'Report', icon: '◔' },
     { id: 'accounts', label: 'Accounts', icon: '▤' },
-    { id: 'groups', label: 'Groups', icon: '◎' },
+    { id: 'budgets', label: 'Budgets', icon: '◎' },
     { id: 'settings', label: 'Settings', icon: '⚙' }
   ];
 

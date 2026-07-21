@@ -20,6 +20,7 @@
       ],
       transactions: [],
       groups: [],
+      groupTransactions: [],
       settings: {
         defaultAccountId: 'assets.bank_accounts.checkings'
       }
@@ -76,7 +77,11 @@
       return key;
     }
 
-    const transactions = Array.isArray(parsed.transactions)
+    // Transactions used to carry groupId/splits inline. That link now
+    // lives in a separate groupTransactions table, so we read the old
+    // fields here (if present) just long enough to migrate them below,
+    // then drop them from the transaction's own shape.
+    const rawTransactions = Array.isArray(parsed.transactions)
       ? parsed.transactions
           .filter(t => t && typeof t === 'object')
           .map(t => ({
@@ -86,12 +91,14 @@
             amount: Number(t.amount) || 0,
             from: mapAccountRef(t.from),
             to: mapAccountRef(t.to),
-            groupId: t.groupId != null && t.groupId !== '' ? Number(t.groupId) : null,
-            splits: Array.isArray(t.splits)
+            legacyGroupId: t.groupId != null && t.groupId !== '' ? Number(t.groupId) : null,
+            legacySplits: Array.isArray(t.splits)
               ? t.splits.map(s => ({ member: String(s.member || ''), amount: Number(s.amount) || 0 }))
               : null
           }))
       : [];
+
+    const transactions = rawTransactions.map(({ legacyGroupId, legacySplits, ...t }) => t);
 
     const groups = Array.isArray(parsed.groups)
       ? parsed.groups
@@ -99,9 +106,42 @@
           .map(g => ({
             id: Number(g.id),
             name: String(g.name || ''),
-            members: Array.isArray(g.members) ? g.members.map(String) : []
+            members: Array.isArray(g.members) ? g.members.map(String) : [],
+            budget: g.budget != null && g.budget !== '' && !Number.isNaN(Number(g.budget)) ? Number(g.budget) : null
           }))
       : [];
+    const groupIds = new Set(groups.map(g => g.id));
+
+    let nextGroupTxId = 1;
+    const groupTransactions = [];
+
+    // New-format links, if this data was already saved under the new shape.
+    if (Array.isArray(parsed.groupTransactions)) {
+      parsed.groupTransactions
+        .filter(gt => gt && typeof gt === 'object')
+        .forEach(gt => {
+          const groupId = Number(gt.groupId);
+          const transactionId = Number(gt.transactionId);
+          if (!groupIds.has(groupId)) return; // orphaned reference, drop it
+          const splits = Array.isArray(gt.splits)
+            ? gt.splits.map(s => ({ member: String(s.member || ''), amount: Number(s.amount) || 0 }))
+            : [];
+          groupTransactions.push({ id: nextGroupTxId++, groupId, transactionId, splits });
+        });
+    }
+
+    // Legacy migration: transactions that still carry the old inline
+    // groupId/splits fields get converted into join-table rows.
+    rawTransactions.forEach(t => {
+      if (t.legacyGroupId != null && groupIds.has(t.legacyGroupId)) {
+        groupTransactions.push({
+          id: nextGroupTxId++,
+          groupId: t.legacyGroupId,
+          transactionId: t.id,
+          splits: t.legacySplits || []
+        });
+      }
+    });
 
     const settings = {
       defaultAccountId: parsed.settings && typeof parsed.settings.defaultAccountId === 'string' && parsed.settings.defaultAccountId
@@ -109,7 +149,7 @@
         : (base.settings ? base.settings.defaultAccountId : null)
     };
 
-    return { accounts, transactions, groups, settings };
+    return { accounts, transactions, groups, groupTransactions, settings };
   }
 
   // ---------- IndexedDB (stores the FileSystemFileHandle — can't go in localStorage) ----------

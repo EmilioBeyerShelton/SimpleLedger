@@ -82,7 +82,7 @@
       let splits = null;
       if (groupId) {
         const included = splitRows.filter(r => r.included);
-        if (!included.length) { setError('Select at least one group member to split with.'); return; }
+        if (!included.length) { setError('Select at least one member to split with.'); return; }
         splits = included.map(r => ({ member: r.member, amount: Number(r.amount) || 0 }));
         const sum = splits.reduce((s, r) => s + r.amount, 0);
         if (Math.abs(sum - amountNum) > 0.01) {
@@ -139,7 +139,7 @@
         </div>
 
         <button type="button" class="ghost small more-toggle" onClick=${() => setShowMore(s => !s)}>
-          ${showMore ? '– Fewer options' : '+ Date, accounts, split with a group'}
+          ${showMore ? '– Fewer options' : '+ Date, accounts, split with a budget'}
         </button>
 
         ${showMore && html`
@@ -150,7 +150,7 @@
                 <input id="f-date" type="date" value=${date} onInput=${e => setDate(e.target.value)} />
               </div>
               <div class="form-row">
-                <label for="f-group">Split with group</label>
+                <label for="f-group">Split with budget</label>
                 <select id="f-group" value=${groupId} onChange=${e => setGroupId(e.target.value)}>
                   <option value="">No split</option>
                   ${groups.map(g => html`<option value=${g.id}>${g.name}</option>`)}

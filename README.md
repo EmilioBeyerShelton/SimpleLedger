@@ -32,9 +32,13 @@ update the three `<script src="...">` URLs to point there instead.
   add/edit dialog; deleting is in that dialog too. One account can be
   marked "Default" there, which is what's pre-selected as "From" whenever
   you add a new expense (starts out as `checkings`).
-- **Groups**: create a group with a few members, then split any expense
-  across them. Splitting is even by default, editable per person, and just
-  tracks who owes what — it doesn't move extra money on its own.
+- **Budgets** (formerly "Groups"): create one with a few members, then
+  optionally give it a budget amount — or leave it open, budgets aren't
+  required. Any expense you link to a budget shows up there purely as
+  information: it doesn't move extra money on its own. The Budgets tab
+  shows each budget's total spent, a depletion bar (turns red past 100%)
+  if it has a budget, and each member's split total. Splitting an expense
+  is even by default and editable per person.
 - **Transactions tab** (formerly "History"): a date-grouped list — dividers
   read "Today", "Yesterday", "This week", then each month written out
   (e.g. "July"; a year gets appended if it's not the current one). Sort
@@ -42,7 +46,7 @@ update the three `<script src="...">` URLs to point there instead.
 - **Search and filters**: a search bar (matches title, and the From/To
   account's title or path) and a filter icon next to it — tap it for a
   modal with sort order, From account, To account, a date range, and/or
-  group. The badge on the icon shows how many filters are active;
+  budget. The badge on the icon shows how many filters are active;
   "Clear filters" in the modal resets them.
 - **Settings tab**: this is where data storage lives — link/unlink a file
   on disk via the File System Access API, and download/upload manual JSON
@@ -76,8 +80,8 @@ js/components/
   HistoryView.js                 Transactions tab: list + add/edit modals
   AccountForm.js                  add/edit dialog for an account
   AccountsView.js                  account list, balances, default marker
-  GroupsView.js                     groups, member totals, create/delete
-  SettingsView.js                    file linking + download/upload backups
+  BudgetsView.js                     budgets: spend totals, depletion bar, members
+  SettingsView.js                      file linking + download/upload backups
   PieChart.js                         pure SVG pie chart + legend
   SankeyChart.js                       pure SVG sankey layout + renderer
   ReportView.js                          account picker, date range, chart-type toggle
@@ -101,15 +105,27 @@ files yourself and hit it again.
 
 ## Data shape
 
+Transactions no longer carry group info inline — a separate
+`groupTransactions` table links a transaction to a budget/group and holds
+the split, since that link is optional, many-to-one, and purely
+informational (it doesn't affect account balances). Old saved data with
+the previous inline `groupId`/`splits` fields is migrated automatically
+the first time it's loaded.
+
 ```json
 {
   "accounts": [{ "id": "assets.bank_accounts.checkings", "title": "checkings" }],
   "transactions": [{
     "id": 1, "date": "2026-07-21", "title": "Groceries", "amount": 42.5,
-    "from": "assets.bank_accounts.checkings", "to": "expenses.groceries.edeka",
-    "groupId": null, "splits": null
+    "from": "assets.bank_accounts.checkings", "to": "expenses.groceries.edeka"
   }],
-  "groups": [{ "id": 1, "name": "Roommates", "members": ["Alex", "Sam"] }],
+  "groups": [{
+    "id": 1, "name": "Roommates", "members": ["Alex", "Sam"], "budget": 400
+  }],
+  "groupTransactions": [{
+    "id": 1, "groupId": 1, "transactionId": 1,
+    "splits": [{ "member": "Alex", "amount": 21.25 }, { "member": "Sam", "amount": 21.25 }]
+  }],
   "settings": { "defaultAccountId": "assets.bank_accounts.checkings" }
 }
 ```

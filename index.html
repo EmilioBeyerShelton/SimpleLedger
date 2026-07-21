@@ -393,7 +393,7 @@
   .inline-add-form.column { flex-direction: column; align-items: stretch; }
   .inline-add-form input, .inline-add-form select { flex: 1; min-width: 120px; }
 
-  /* ---------- Groups ---------- */
+  /* ---------- Budgets ---------- */
   .group-card {
     background: var(--panel);
     border: 1px solid var(--line);
@@ -411,6 +411,30 @@
   }
   .group-card-title { font-size: 14px; font-weight: 600; }
   .group-card-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .group-spent-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .group-spent-amount { font-family: var(--mono); font-size: 14px; color: var(--ink); font-weight: 600; }
+
+  .budget-bar-wrap { display: flex; flex-direction: column; gap: 3px; }
+  .budget-bar-track {
+    height: 7px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    overflow: hidden;
+  }
+  .budget-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+  .budget-bar-fill.over { background: var(--danger); }
+  .budget-bar-label { font-size: 11px; color: var(--muted); }
+  .budget-bar-label.over { color: var(--danger); }
+  .budget-none-row { display: flex; }
+  .budget-inline-input { font-size: 12.5px; padding: 6px 8px; }
+
   .group-totals { display: flex; flex-direction: column; gap: 4px; }
   .group-total-row {
     display: flex;
@@ -434,6 +458,7 @@
     font-size: 12.5px;
     color: var(--muted);
   }
+
 
   /* ---------- Modal ---------- */
   .overlay {
@@ -559,21 +584,21 @@
 
   <!-- App code, also classic scripts, loaded in dependency order. -->
   <script src="./js/lib.js?v=8"></script>
-  <script src="./js/utils.js?v=16"></script>
-  <script src="./js/store.js?v=8"></script>
+  <script src="./js/utils.js?v=18"></script>
+  <script src="./js/store.js?v=18"></script>
   <script src="./js/components/Modal.js?v=8"></script>
   <script src="./js/components/TopBar.js?v=8"></script>
-  <script src="./js/components/BottomNav.js?v=15"></script>
+  <script src="./js/components/BottomNav.js?v=18"></script>
   <script src="./js/components/AccountPicker.js?v=14"></script>
-  <script src="./js/components/ExpenseForm.js?v=8"></script>
-  <script src="./js/components/HistoryView.js?v=16"></script>
+  <script src="./js/components/ExpenseForm.js?v=18"></script>
+  <script src="./js/components/HistoryView.js?v=18"></script>
   <script src="./js/components/AccountForm.js?v=8"></script>
   <script src="./js/components/AccountsView.js?v=8"></script>
-  <script src="./js/components/GroupsView.js?v=8"></script>
+  <script src="./js/components/BudgetsView.js?v=18"></script>
   <script src="./js/components/SettingsView.js?v=8"></script>
   <script src="./js/components/PieChart.js?v=13"></script>
   <script src="./js/components/SankeyChart.js?v=12"></script>
   <script src="./js/components/ReportView.js?v=9"></script>
-  <script src="./js/app.js?v=15"></script>
+  <script src="./js/app.js?v=18"></script>
 </body>
 </html>

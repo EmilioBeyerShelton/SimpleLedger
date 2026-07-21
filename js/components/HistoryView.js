@@ -17,6 +17,14 @@
 
     const { Modal, ExpenseForm, AccountPicker } = window.Ledger.components;
 
+    // transactionId -> { groupId, splits } — the join table replaces the
+    // old inline groupId/splits fields on the transaction itself.
+    const linkByTxId = useMemo(() => {
+      const map = new Map();
+      data.groupTransactions.forEach(gt => map.set(gt.transactionId, gt));
+      return map;
+    }, [data.groupTransactions]);
+
     const sorted = useMemo(() => {
       const dir = sortOrder === 'asc' ? 1 : -1;
       return [...data.transactions].sort((a, b) =>
@@ -31,7 +39,7 @@
         if (filterTo && t.to !== filterTo) return false;
         if (filterDateFrom && t.date < filterDateFrom) return false;
         if (filterDateTo && t.date > filterDateTo) return false;
-        if (filterGroupId && t.groupId !== Number(filterGroupId)) return false;
+        if (filterGroupId && (!linkByTxId.get(t.id) || linkByTxId.get(t.id).groupId !== Number(filterGroupId))) return false;
         if (q) {
           const fromName = accountName(data.accounts, t.from).toLowerCase();
           const toName = accountName(data.accounts, t.to).toLowerCase();
@@ -44,7 +52,7 @@
         }
         return true;
       });
-    }, [sorted, searchQuery, filterFrom, filterTo, filterDateFrom, filterDateTo, filterGroupId, data.accounts]);
+    }, [sorted, searchQuery, filterFrom, filterTo, filterDateFrom, filterDateTo, filterGroupId, data.accounts, linkByTxId]);
 
     // Group consecutive same-bucket rows under a divider ("Today",
     // "Yesterday", "This week", or a written-out month). Relies on the
@@ -82,6 +90,10 @@
     }
 
     const editing = editingId != null ? data.transactions.find(t => t.id === editingId) : null;
+    const editingLink = editing ? linkByTxId.get(editing.id) : null;
+    const editingInitial = editing
+      ? { ...editing, groupId: editingLink ? editingLink.groupId : null, splits: editingLink ? editingLink.splits : null }
+      : null;
 
     return html`
       <div class="view">
@@ -121,7 +133,7 @@
                   <div class="expense-row-title">${row.tx.title}</div>
                   <div class="expense-row-meta">
                     ${accountName(data.accounts, row.tx.from)} → ${accountName(data.accounts, row.tx.to)}
-                    ${row.tx.groupId ? html` · <span class="chip">${groupName(data.groups, row.tx.groupId)}</span>` : ''}
+                    ${linkByTxId.has(row.tx.id) ? html` · <span class="chip">${groupName(data.groups, linkByTxId.get(row.tx.id).groupId)}</span>` : ''}
                   </div>
                 </div>
                 <div class="expense-row-amount">${formatAmount(row.tx.amount)}</div>
@@ -135,7 +147,7 @@
             <${ExpenseForm}
               accounts=${data.accounts}
               groups=${data.groups}
-              initial=${editing}
+              initial=${editingInitial}
               onSave=${patch => { onUpdate(editing.id, patch); setEditingId(null); }}
               onCancel=${() => setEditingId(null)}
               onDelete=${() => {
@@ -216,9 +228,9 @@
               </div>
 
               <div class="form-row">
-                <label for="filt-group">Group</label>
+                <label for="filt-group">Budget</label>
                 <select id="filt-group" value=${filterGroupId} onChange=${e => setFilterGroupId(e.target.value)}>
-                  <option value="">Any group</option>
+                  <option value="">Any budget</option>
                   ${data.groups.map(g => html`<option value=${g.id}>${g.name}</option>`)}
                 </select>
               </div>

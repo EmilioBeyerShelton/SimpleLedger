@@ -73,18 +73,41 @@
   }
 
   // Per-member totals of what they've been assigned across every expense
-  // split within a group — i.e. what each person owes back for shared costs.
-  function groupMemberTotals(group, transactions) {
+  // linked to a group (via the groupTransactions join table) — i.e. what
+  // each person owes back for shared costs.
+  function groupMemberTotals(group, groupTransactions) {
     const totals = {};
     group.members.forEach(m => { totals[m] = 0; });
-    transactions
-      .filter(t => t.groupId === group.id && Array.isArray(t.splits))
-      .forEach(t => {
-        t.splits.forEach(s => {
+    groupTransactions
+      .filter(gt => gt.groupId === group.id && Array.isArray(gt.splits))
+      .forEach(gt => {
+        gt.splits.forEach(s => {
           totals[s.member] = (totals[s.member] || 0) + s.amount;
         });
       });
     return totals;
+  }
+
+  // Overall amount spent under a group/budget: sum of every transaction
+  // linked to it, looked up through the join table.
+  function groupSpent(groupId, groupTransactions, transactions) {
+    const txIds = new Set(
+      groupTransactions.filter(gt => gt.groupId === groupId).map(gt => gt.transactionId)
+    );
+    if (!txIds.size) return 0;
+    return transactions
+      .filter(t => txIds.has(t.id))
+      .reduce((s, t) => s + t.amount, 0);
+  }
+
+  // All transactions linked to a group, newest first.
+  function groupTransactionList(groupId, groupTransactions, transactions) {
+    const txIds = new Set(
+      groupTransactions.filter(gt => gt.groupId === groupId).map(gt => gt.transactionId)
+    );
+    return transactions
+      .filter(t => txIds.has(t.id))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }
 
   // ---------- date grouping ----------
@@ -120,7 +143,8 @@
   window.Ledger.utils = {
     nextId, todayStr, formatAmount, formatDate,
     accountBalance, accountName, groupName,
-    splitEqually, groupMemberTotals, normalizeAccountId,
+    splitEqually, groupMemberTotals, groupSpent, groupTransactionList,
+    normalizeAccountId,
     dateBucket, formatDayLabel
   };
 })();

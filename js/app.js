@@ -1,7 +1,7 @@
 (function () {
   const { html, render, useState } = window.Ledger;
   const { nextId } = window.Ledger.utils;
-  const { TopBar, BottomNav, HistoryView, AccountsView, GroupsView, SettingsView, ReportView } = window.Ledger.components;
+  const { TopBar, BottomNav, HistoryView, AccountsView, BudgetsView, SettingsView, ReportView } = window.Ledger.components;
 
   function App() {
     const store = window.Ledger.useStore();
@@ -17,24 +17,38 @@
       return html`<div class="loading-screen">Loading…</div>`;
     }
 
-    function addTransaction(tx) {
-      store.update(d => ({
-        ...d,
-        transactions: [...d.transactions, { ...tx, id: nextId(d.transactions) }]
-      }));
+    function addTransaction(payload) {
+      const { groupId, splits, ...txFields } = payload;
+      store.update(d => {
+        const newId = nextId(d.transactions);
+        const transactions = [...d.transactions, { ...txFields, id: newId }];
+        const groupTransactions = groupId
+          ? [...d.groupTransactions, { id: nextId(d.groupTransactions), groupId, transactionId: newId, splits: splits || [] }]
+          : d.groupTransactions;
+        return { ...d, transactions, groupTransactions };
+      });
       flash('Expense added.');
     }
 
-    function updateTransaction(id, patch) {
-      store.update(d => ({
-        ...d,
-        transactions: d.transactions.map(t => t.id === id ? { ...t, ...patch } : t)
-      }));
+    function updateTransaction(id, payload) {
+      const { groupId, splits, ...txFields } = payload;
+      store.update(d => {
+        const transactions = d.transactions.map(t => t.id === id ? { ...t, ...txFields } : t);
+        const remaining = d.groupTransactions.filter(gt => gt.transactionId !== id);
+        const groupTransactions = groupId
+          ? [...remaining, { id: nextId(remaining), groupId, transactionId: id, splits: splits || [] }]
+          : remaining;
+        return { ...d, transactions, groupTransactions };
+      });
       flash('Expense updated.');
     }
 
     function deleteTransaction(id) {
-      store.update(d => ({ ...d, transactions: d.transactions.filter(t => t.id !== id) }));
+      store.update(d => ({
+        ...d,
+        transactions: d.transactions.filter(t => t.id !== id),
+        groupTransactions: d.groupTransactions.filter(gt => gt.transactionId !== id)
+      }));
       flash('Expense deleted.');
     }
 
@@ -57,8 +71,8 @@
           ${tab === 'accounts' && html`
             <${AccountsView} data=${store.data} onUpdate=${store.update} />
           `}
-          ${tab === 'groups' && html`
-            <${GroupsView} data=${store.data} onUpdate=${store.update} />
+          ${tab === 'budgets' && html`
+            <${BudgetsView} data=${store.data} onUpdate=${store.update} />
           `}
           ${tab === 'settings' && html`
             <${SettingsView} store=${store} />
