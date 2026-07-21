@@ -1,0 +1,17 @@
+{
+  "accounts": [
+    {
+      "id": "assets.bank_accounts.checkings",
+      "title": "checkings"
+    },
+    {
+      "id": "expenses",
+      "title": "expenses"
+    }
+  ],
+  "transactions": [],
+  "groups": [],
+  "settings": {
+    "defaultAccountId": "assets.bank_accounts.checkings"
+  }
+}
