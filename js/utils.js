@@ -111,10 +111,16 @@
     return d.getFullYear() === t.getFullYear() ? label : `${label} ${d.getFullYear()}`;
   }
 
+  function formatDayLabel(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d)) return dateStr;
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
   window.Ledger.utils = {
     nextId, todayStr, formatAmount, formatDate,
     accountBalance, accountName, groupName,
     splitEqually, groupMemberTotals, normalizeAccountId,
-    dateBucket
+    dateBucket, formatDayLabel
   };
 })();

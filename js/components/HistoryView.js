@@ -1,6 +1,6 @@
 (function () {
   const { html, useState, useMemo } = window.Ledger;
-  const { formatAmount, formatDate, accountName, groupName, dateBucket } = window.Ledger.utils;
+  const { formatAmount, accountName, groupName, dateBucket, formatDayLabel } = window.Ledger.utils;
 
   function HistoryView({ data, onAdd, onUpdate, onDelete }) {
     const [editingId, setEditingId] = useState(null);
@@ -53,12 +53,19 @@
       const today = new Date();
       const out = [];
       let lastBucket = null;
+      let lastDay = null;
       filtered.forEach(t => {
         const bucket = dateBucket(t.date, today);
         if (bucket !== lastBucket) {
           out.push({ type: 'divider', label: bucket, key: `divider-${bucket}-${t.id}` });
           lastBucket = bucket;
+          lastDay = null;
         }
+        const showDay = bucket !== 'Today' && bucket !== 'Yesterday' && t.date !== lastDay;
+        if (showDay) {
+          out.push({ type: 'day', label: formatDayLabel(t.date), key: `day-${t.date}-${t.id}` });
+        }
+        lastDay = t.date;
         out.push({ type: 'tx', tx: t, key: t.id });
       });
       return out;
@@ -105,21 +112,22 @@
         ${data.transactions.length > 0 && filtered.length === 0 && html`<p class="empty-note">No expenses match your search or filters.</p>`}
 
         <div class="expense-list">
-          ${rows.map(row => row.type === 'divider'
-            ? html`<div class="date-divider" key=${row.key}><span>${row.label}</span></div>`
-            : html`
+          ${rows.map(row => {
+            if (row.type === 'divider') return html`<div class="date-divider" key=${row.key}><span>${row.label}</span></div>`;
+            if (row.type === 'day') return html`<div class="day-divider" key=${row.key}>${row.label}</div>`;
+            return html`
               <div class="expense-row" key=${row.key} onClick=${() => setEditingId(row.tx.id)}>
                 <div class="expense-row-main">
                   <div class="expense-row-title">${row.tx.title}</div>
                   <div class="expense-row-meta">
-                    ${formatDate(row.tx.date)} · ${accountName(data.accounts, row.tx.from)} → ${accountName(data.accounts, row.tx.to)}
+                    ${accountName(data.accounts, row.tx.from)} → ${accountName(data.accounts, row.tx.to)}
                     ${row.tx.groupId ? html` · <span class="chip">${groupName(data.groups, row.tx.groupId)}</span>` : ''}
                   </div>
                 </div>
                 <div class="expense-row-amount">${formatAmount(row.tx.amount)}</div>
               </div>
-            `
-          )}
+            `;
+          })}
         </div>
 
         ${editing && html`
