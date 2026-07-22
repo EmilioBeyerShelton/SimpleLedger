@@ -52,7 +52,8 @@ portToReact/
     components/
       ui/                    shadcn/ui primitives (button, input, dialog, select, ...)
       layout/                TopBar, BottomNav
-      AccountPicker.tsx, ExpenseForm.tsx, AccountForm.tsx, PhotoPicker.tsx, PieChart.tsx, SankeyChart.tsx
+      AccountPicker.tsx, ExpenseForm.tsx, AccountForm.tsx, PieChart.tsx, SankeyChart.tsx
+      PhotoPicker.tsx, PhotoCropDialog.tsx    capture -> crop -> compress -> attach (see "Expense photos")
     pages/                  one file per tab: Transactions, Report, Accounts, Budgets, Settings
     App.tsx                 shell: boots the store, renders TopBar/Outlet/BottomNav
     routes.tsx              react-router route table (HashRouter)
@@ -170,33 +171,56 @@ its own plain-JS copy of the same DDL and mapping logic instead. Both
 copies are commented "KEEP IN SYNC" — if you change the table/column shape
 in `src/lib/db/schema.ts`, make the identical change in `main.cjs`.
 
-### Expense photos (`PhotoPicker.tsx`, `lib/utils/image.ts`)
+### Expense photos (`PhotoPicker.tsx`, `PhotoCropDialog.tsx`, `lib/utils/image.ts`)
 
 `ExpenseForm` has an optional photo field, backed by `PhotoPicker.tsx` and
-`@capacitor/camera`. The capture flow is the same on every platform for a
-reason worth calling out, since it looks at first glance like it should
-need a persistence-adapter-style platform split and doesn't:
-`@capacitor/camera`'s *web* implementation (used automatically whenever
-`Capacitor.isNativePlatform()` is false — i.e. the web build and Electron's
-renderer both) is itself just a `<input type="file">` with the `capture`
-attribute set based on the requested source. So `Camera.getPhoto({ source:
-CameraSource.Camera | CameraSource.Photos })` works unmodified on web,
-Electron, and native iOS; "Take photo" only degrades to a plain file
-picker on desktop browsers/Electron, which have no camera-capture UI to
-give it in the first place — the same kind of graceful degradation as
-linking/backups elsewhere in this app.
+`@capacitor/camera`. Flow: **capture → crop → compress → attach.**
 
-Compression happens client-side, before the photo ever becomes part of a
-`Transaction`: `lib/utils/image.ts`'s `compressImage()` decodes the photo
-(`createImageBitmap`, with an `<img>`+canvas fallback for older WebViews),
-downscales it (longest side capped at 1600px) onto a canvas, and
-re-encodes it as JPEG at quality 0.75, returning a `data:image/jpeg;...`
-data URL. This is the one place in `lib/utils/` that isn't a pure
-DOM-free function (rule #3's "pure functions, unit-testable, no
-React/DOM" is about *business logic*, not this) — resizing/recompressing
-an image inherently needs a decoder and a canvas, and every platform this
-app renders on is a full DOM environment, so a single canvas-based
-implementation covers web, Electron, and iOS without a per-platform split.
+**Capture** is a single "Add photo" button, not separate "Take
+photo"/"Choose photo" buttons — `Camera.getPhoto({ source:
+CameraSource.Prompt, webUseInput: true })`. On native iOS, `Prompt` shows
+the OS's own action sheet ("Take Photo" / "Choose from Library"), so there
+was never a need to build that choice into this UI. On web (which also
+covers Electron's renderer, since `Capacitor.isNativePlatform()` is false
+there too), `@capacitor/camera`'s web implementation normally needs
+`@ionic/pwa-elements` registered to render `Prompt`'s action-sheet UI —
+skip that dependency and `getPhoto()` just hangs, since the plugin creates
+an undefined custom element and waits on a `onSelection` event nothing
+ever fires. Passing `webUseInput: true` sidesteps that entirely: the
+plugin's web code takes an earlier branch straight to a bare `<input
+type="file" accept="image/*">` with no `capture` attribute, which is
+exactly what triggers a mobile browser's own native "Photo Library / Take
+Photo" sheet — no extra package needed. Desktop browsers/Electron, with no
+camera-capture UI to offer, just get a plain file picker — the same kind
+of graceful degradation as linking/backups elsewhere in this app.
+
+**Crop** happens next, in `PhotoCropDialog.tsx`, before compression —
+cropping a large uncompressed image and *then* downscaling it gives a
+sharper result than the reverse order. This is a plain rectangular crop
+(`react-image-crop`), not a perspective-correcting document scan like
+Apple's Notes scanner — full corner/edge detection needs real computer
+vision, which was judged not worth the dependency weight for what's
+fundamentally "trim a receipt photo down to the receipt." The user can
+cancel out of the crop step, which discards the captured photo entirely
+(nothing is attached until "Use photo" is pressed).
+
+**Compression** happens client-side on the cropped result, before it ever
+becomes part of a `Transaction`: `lib/utils/image.ts`'s `compressImage()`
+decodes the photo (`createImageBitmap`, with an `<img>`+canvas fallback
+for older WebViews), downscales it (longest side capped at 1600px) onto a
+canvas, and re-encodes it as JPEG at quality 0.75, returning a
+`data:image/jpeg;...` data URL. This is the one place in `lib/utils/`
+that isn't a pure DOM-free function (rule #3's "pure functions,
+unit-testable, no React/DOM" is about *business logic*, not this) —
+resizing/recompressing an image inherently needs a decoder and a canvas,
+and every platform this app renders on is a full DOM environment, so a
+single canvas-based implementation covers web, Electron, and iOS without
+a per-platform split.
+
+**Display**: once attached, the photo renders as a small thumbnail with a
+compact "×" button overlaid on its top-left corner to remove it (rather
+than a separate "Remove photo" button next to it). Tapping the thumbnail
+itself opens a `Dialog` with a larger, uncropped-by-the-dialog preview.
 
 ### Web (`web.ts`)
 

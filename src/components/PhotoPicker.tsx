@@ -1,21 +1,28 @@
 // Camera / photo-library picker for the expense form's optional receipt
-// photo. Built on @capacitor/camera rather than a raw <input type="file">
-// so "Take Photo" vs "Choose Photo" can request the camera vs. the library
-// specifically — and one implementation covers every platform for free:
-// @capacitor/camera's web implementation (used automatically whenever
-// Capacitor.isNativePlatform() is false, i.e. on both the web build and
-// inside Electron's Chromium renderer) is itself just a <input type="file">
-// with the `capture` attribute set appropriately, so there's no
-// web/electron/ios branch to maintain here. On desktop browsers/Electron,
-// where there's no real camera-capture UI, "Take Photo" degrades
-// gracefully to the same file picker as "Choose Photo" — consistent with
-// how linking/backups degrade on unsupported platforms elsewhere in this
-// app.
+// photo, plus a crop step and a tap-to-preview thumbnail.
+//
+// A single button, not "Take photo" + "Choose photo": `source:
+// CameraSource.Prompt` on native iOS shows the OS's own action sheet
+// ("Take Photo" / "Choose from Library") — no need to build that choice
+// into this UI at all. On web, Prompt normally needs `@ionic/pwa-elements`
+// registered to render its action sheet (`getPhoto()` otherwise just hangs
+// waiting on an event a plain, undefined custom element never fires,
+// per @capacitor/camera's web source) — rather than pull in that extra
+// package, `webUseInput: true` is passed alongside it, which forces
+// @capacitor/camera's web fallback to skip straight to a bare
+// `<input type="file" accept="image/*">` with no `capture` attribute.
+// That's exactly what a plain, uncaptured file input does on a mobile
+// browser: the OS shows its own "Photo Library / Take Photo / Choose
+// File" sheet. Desktop browsers/Electron just get a normal file picker —
+// same graceful degradation used elsewhere in this app (see
+// ARCHITECTURE.md, "Expense photos").
 import { useRef, useState } from 'react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { compressImage } from '@/lib/utils/image';
+import { PhotoCropDialog } from '@/components/PhotoCropDialog';
 import { Button } from '@/components/ui/button';
-import { Camera as CameraIcon, Image as ImageIcon, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Camera as CameraIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PhotoPickerProps {
@@ -23,31 +30,29 @@ interface PhotoPickerProps {
   onChange: (value: string | null) => void;
 }
 
-async function base64ToBlob(base64: string, mimeType: string): Promise<Blob> {
-  const res = await fetch(`data:${mimeType};base64,${base64}`);
-  return res.blob();
-}
-
 export function PhotoPicker({ value, onChange }: PhotoPickerProps) {
   const [busy, setBusy] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
   // Guards against a slow compress finishing after a newer/cleared photo —
   // only the most recent capture is allowed to win.
   const requestId = useRef(0);
 
-  async function capture(source: CameraSource) {
-    const id = ++requestId.current;
+  async function capture() {
     setBusy(true);
     try {
       const photo = await Camera.getPhoto({
-        quality: 85,
+        quality: 90,
         allowEditing: false,
         resultType: CameraResultType.Base64,
-        source
+        source: CameraSource.Prompt,
+        webUseInput: true
       });
       if (!photo.base64String) throw new Error('No image data returned.');
-      const blob = await base64ToBlob(photo.base64String, `image/${photo.format || 'jpeg'}`);
-      const compressed = await compressImage(blob);
-      if (requestId.current === id) onChange(compressed);
+      // Handed to the crop dialog as-is (uncompressed) — compression
+      // happens after cropping, on the smaller cropped region, in
+      // handleCropConfirm below.
+      setPendingImage(`data:image/${photo.format || 'jpeg'};base64,${photo.base64String}`);
     } catch (err: any) {
       // The plugin rejects with a generic-ish message when the user just
       // cancels the picker/camera — that's not an error worth surfacing.
@@ -57,32 +62,60 @@ export function PhotoPicker({ value, onChange }: PhotoPickerProps) {
         toast('Could not add photo: ' + (msg || 'unknown error'));
       }
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCropConfirm(blob: Blob) {
+    const id = ++requestId.current;
+    setPendingImage(null);
+    setBusy(true);
+    try {
+      const compressed = await compressImage(blob);
+      if (requestId.current === id) onChange(compressed);
+    } catch (err: any) {
+      console.error('Photo processing failed', err);
+      toast('Could not add photo: ' + (err?.message || 'unknown error'));
+    } finally {
       if (requestId.current === id) setBusy(false);
     }
   }
 
-  if (value) {
-    return (
-      <div className="flex items-center gap-3">
-        <img src={value} alt="Expense receipt" className="h-16 w-16 shrink-0 rounded-md border object-cover" />
-        <Button type="button" variant="outline" size="sm" onClick={() => onChange(null)}>
-          <X className="mr-1 h-3.5 w-3.5" />
-          Remove photo
-        </Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex gap-2">
-      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => capture(CameraSource.Camera)}>
-        <CameraIcon className="mr-1 h-3.5 w-3.5" />
-        Take photo
-      </Button>
-      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => capture(CameraSource.Photos)}>
-        <ImageIcon className="mr-1 h-3.5 w-3.5" />
-        Choose photo
-      </Button>
-    </div>
+    <>
+      {value ? (
+        <div className="relative inline-block">
+          <button
+            type="button"
+            onClick={() => setShowPreview(true)}
+            className="block h-16 w-16 overflow-hidden rounded-md border"
+          >
+            <img src={value} alt="Expense receipt" className="h-full w-full object-cover" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            aria-label="Remove photo"
+            className="absolute -left-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border bg-background shadow"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      ) : (
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={capture}>
+          <CameraIcon className="mr-1 h-3.5 w-3.5" />
+          Add photo
+        </Button>
+      )}
+
+      <PhotoCropDialog imageSrc={pendingImage} onCancel={() => setPendingImage(null)} onConfirm={handleCropConfirm} />
+
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Receipt photo</DialogTitle></DialogHeader>
+          {value && <img src={value} alt="Expense receipt" className="max-h-[70vh] w-full rounded-md object-contain" />}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

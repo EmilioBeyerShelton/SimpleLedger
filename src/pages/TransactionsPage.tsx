@@ -107,7 +107,12 @@ export default function TransactionsPage() {
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Transactions</h2>
-        <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="mr-1 h-4 w-4" />Add expense</Button>
+        {/* On mobile this collapses to the floating "+" button below,
+            hovering over the list above the bottom nav — the full-text
+            button only makes sense once BottomNav has become a top bar
+            (see BottomNav.tsx's md: variants) and there's no bottom edge
+            to float above. */}
+        <Button size="sm" className="hidden md:inline-flex" onClick={() => setShowAdd(true)}><Plus className="mr-1 h-4 w-4" />Add expense</Button>
       </div>
 
       <div className="flex items-center gap-2">
@@ -149,6 +154,19 @@ export default function TransactionsPage() {
           );
         })}
       </div>
+
+      {/* Floating "add expense" button — mobile only (BottomNav is a real
+          bottom bar there); hovers above it over the list. Hidden at md:
+          and up, where the header's text button (above) takes over,
+          matching BottomNav's own mobile/desktop split. */}
+      <Button
+        size="icon"
+        className="fixed bottom-24 right-4 z-40 h-14 w-14 rounded-full shadow-lg md:hidden"
+        onClick={() => setShowAdd(true)}
+        aria-label="Add expense"
+      >
+        <Plus className="h-6 w-6" />
+      </Button>
 
       <Dialog open={!!editing} onOpenChange={open => !open && setEditingId(null)}>
         <DialogContent>
