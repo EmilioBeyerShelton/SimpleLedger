@@ -63,8 +63,10 @@ file itself.
 ## Data
 
 The live database (a real SQLite file, or OPFS-backed SQLite on web) isn't
-meant to be hand-edited or moved between platforms directly. For that,
-use the Settings tab's download/upload (or share, on iOS) — it always
-produces and accepts the same portable JSON shape documented in
-`ARCHITECTURE.md`, whether the source is this React build on any platform
-or the original vanilla-JS SimpleLedger.
+meant to be hand-edited directly, but it can be moved between platforms:
+use the Settings tab's download/upload (or share, on iOS) to export or
+restore a `.sqlite3` snapshot — see "Why SQLite everywhere, including
+backups" in `ARCHITECTURE.md`. Exports from a pre-SQLite build of this app
+(or the original vanilla-JS SimpleLedger) are JSON and are no longer
+accepted by "Upload backup" directly — see the note on legacy migration
+in `ARCHITECTURE.md`.

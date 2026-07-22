@@ -94,23 +94,25 @@ SQLite migration:
 - `writeLinkedFile(data)` — mirror to the linked file, if any.
 - `connectExisting()` / `connectNew()` / `reconnect()` / `disconnect()` —
   manage the optional linked-file relationship.
-- `downloadBackup(data)` / `uploadBackup(file)` — manual JSON
+- `downloadBackup(data)` / `uploadBackup(file)` — manual `.sqlite3`
   export/import, independent of any linked file.
 
-### Why SQLite, and what stays JSON
+### Why SQLite everywhere, including backups
 
-The **always-on local store** and the **optional linked file** are both
-real SQLite databases now, on every platform — replacing the original
-localStorage/Preferences/JSON-file approach entirely. **Manual backup**
-(the Settings tab's download/share + upload) deliberately stayed JSON: it
-needs to be portable across platforms and app versions, human-readable,
-and diffable, none of which a SQLite file gives you for free. It also
-lets every adapter's restore path keep running through the same
-`normalize()` migration used for pre-SQLite exports. So: SQLite is the
-storage *engine*; JSON is the *interchange format*. Nothing in the UI or
-the Zustand store needs to know the difference — `uploadBackup()` always
-returns a plain object, and the store's `mutate()` writes it through
-`persistLocal()` like any other change.
+The **always-on local store**, the **optional linked file**, and now
+**manual backup** (the Settings tab's download/share + upload) are all
+real SQLite databases, on every platform — replacing the original
+localStorage/Preferences/JSON-file approach entirely. A raw `.sqlite3`
+backup is smaller and faster to produce/consume than a JSON
+serialize/parse round-trip (especially on iOS, where it's a straight file
+copy rather than reading every row back out through the plugin), and it
+means one restore path — `readLedgerData()`/`writeLedgerData()` — handles
+every source of data, live store and backups alike. The trade-off is that
+`.sqlite3` backups aren't human-readable/diffable the way JSON was;
+that's an accepted cost. `uploadBackup()` still always returns a plain
+`LedgerData`-shaped object that gets run through `normalize()`, so the
+Zustand store's `mutate()`/`persistLocal()` path doesn't know or care that
+the file it read was SQLite rather than JSON.
 
 ### Schema (`src/lib/db/schema.ts`)
 
@@ -187,22 +189,39 @@ by the plugin under `Library/CapacitorDatabase/` by default — replaces the
 old `@capacitor/preferences`/NSUserDefaults JSON blob.
 
 "Linked file" keeps the shape it had before the SQLite migration, because
-iOS still has no equivalent of a persistent external-file handle *and* the
-SQLite plugin doesn't expose a raw-bytes export of its native `.db` file:
-linking mirrors a **JSON snapshot** (read from SQLite, written back into
-SQLite on reconnect) to `Documents/ledger-data.json` inside the app
-sandbox. With `UIFileSharingEnabled` set in `Info.plist` (see the iOS
-setup section below), that file shows up under **Files app → On My
-iPhone/iPad → SimpleLedger**. Worth being precise about: this is a JSON
-mirror of the data, not a copy of the `.sqlite3` file itself — the Settings
-copy on this platform says so explicitly ("mirror a JSON snapshot"), so it
-doesn't imply a raw database file that isn't actually there.
+iOS still has no equivalent of a persistent external-file handle: linking
+mirrors a **JSON snapshot** (read from SQLite, written back into SQLite on
+reconnect) to `Documents/ledger-data.json` inside the app sandbox. With
+`UIFileSharingEnabled` set in `Info.plist` (see the iOS setup section
+below), that file shows up under **Files app → On My iPhone/iPad →
+SimpleLedger**. Worth being precise about: this is a JSON mirror of the
+data, not a copy of the `.sqlite3` file itself — the Settings copy on this
+platform says so explicitly ("mirror a JSON snapshot"), so it doesn't
+imply a raw database file that isn't actually there.
 
-- **Backup**: `downloadBackup` writes a timestamped JSON snapshot to the
-  cache directory and opens the native share sheet (`@capacitor/share`) so
-  the user can save it to Files, AirDrop it, etc.
-- **Restore**: a plain `<input type="file">`, which iOS's WKWebView routes
-  to the native document picker — no extra plugin needed.
+**Manual backup**, unlike the linked-file mirror, *does* use the raw
+native database file. `@capacitor-community/sqlite` has no public
+export/import-bytes API, so `capacitor.ts` reads and overwrites the
+plugin's on-disk file directly via `@capacitor/filesystem`, at the path
+the plugin is documented to use for an unencrypted database named
+`ledger`: `Library/CapacitorDatabase/ledgerSQLite.db` (the directory half
+of that path matches `iosDatabaseLocation` in `capacitor.config.ts`).
+That's a convention of the plugin, not a guaranteed-stable public API —
+if a future plugin version changes its file-naming scheme, this needs to
+change too.
+
+- **Backup**: `downloadBackup` reads `ledgerSQLite.db`'s raw bytes, copies
+  them to a timestamped `.sqlite3` file in the cache directory, and opens
+  the native share sheet (`@capacitor/share`) so the user can save it to
+  Files, AirDrop it, etc. Reading the file while the connection is open is
+  safe because every write is a single-transaction full-replace (rule
+  #10) — there's no partially-written state to catch mid-save.
+- **Restore**: a plain `<input type="file">` (iOS's WKWebView routes it to
+  the native document picker) hands `capacitor.ts` the picked file's raw
+  bytes. It closes the live SQLite connection, overwrites
+  `ledgerSQLite.db` with those bytes, and reopens the connection —
+  swapping a SQLite file out from under an open native handle isn't
+  supported, so the close/overwrite/reopen order matters.
 
 ### macOS (`electron.ts`)
 
@@ -226,11 +245,16 @@ and never touches SQL.
   chosen path is remembered in the renderer's `localStorage` (which
   Electron persists fine across launches) rather than in the main process,
   since it's just a string.
-- **Manual backup** uses *separate* IPC channels (`writeJsonFile` /
-  `pickSaveJsonFile`) from the ones above, specifically so a backup export
-  never gets routed through the SQLite translation layer — it's a plain
-  `fs.writeFile` of JSON text, matching every other platform's backup
-  format.
+- **Manual backup** reuses the same `dbWrite`/`pickSaveFile` IPC channels
+  as the linked-file feature for `downloadBackup` — a backup is just a
+  full-replace write to a user-picked path instead of the remembered
+  linked path. `uploadBackup` can't reuse `dbRead` the same way, though,
+  because it starts from a `File`'s in-memory bytes rather than a path
+  already on disk, and `better-sqlite3` has no "open from an in-memory
+  buffer" API — so it goes through a dedicated `dbReadFromBytes` IPC
+  channel that writes the uploaded bytes to a throwaway temp file
+  (`os.tmpdir()`), reads it with the same `readLedgerDataFromDb()` used
+  everywhere else, and deletes the temp file afterward.
 - **Native module**: `better-sqlite3` ships a native (non-WASM) binding,
   which must be compiled against Electron's exact Node ABI — different
   from the Node ABI on your system. `@electron/rebuild` handles this; the
@@ -250,7 +274,7 @@ otherwise                             -> WebPersistenceAdapter (web)
 
 Selected once, cached, and injected into the store at `init()`. Nothing
 else in the app branches on platform except `SettingsPage`, which adjusts
-button labels/copy (e.g. "Download JSON" vs. "Share backup").
+button labels/copy (e.g. "Download backup" vs. "Share backup").
 
 ## Legacy data migration
 
@@ -270,11 +294,17 @@ One thing `normalize()` does **not** do automatically: migrate a user's
 *existing* pre-SQLite local data (localStorage on web, Preferences on
 iOS, the old `ledger-data.json` on macOS) into the new SQLite store on
 first run after upgrading. That was a deliberate choice — the SQLite
-migration starts every platform with a fresh, empty database. Anyone
-upgrading from a pre-SQLite build should use the old build's "Download
-JSON" backup, then "Upload JSON" on the new build's Settings tab to bring
-their data across; that path already works today via `uploadBackup()` +
-`normalize()`.
+migration starts every platform with a fresh, empty database.
+
+Note that `uploadBackup()` now expects a `.sqlite3` file, not JSON — this
+means an export from a pre-SQLite build (or from a build older than the
+one that added `.sqlite3` backups) can no longer be loaded directly
+through the Settings tab. Anyone in that situation needs to re-export from
+a build that still supports reading the old JSON format, or have the file
+converted, before it'll load; `normalize()` still runs on whatever
+`readLedgerData()`/`writeLedgerData()` ultimately produces, so once the
+bytes are in SQLite form, legacy shapes inside it (old numeric ids,
+inline `groupId`/`splits`, etc.) are still handled correctly.
 
 ## UI: shadcn/ui + Tailwind
 

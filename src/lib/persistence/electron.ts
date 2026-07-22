@@ -204,24 +204,27 @@ export class ElectronPersistenceAdapter implements PersistenceAdapter {
     };
   }
 
-  // Manual backup/restore stays plain JSON — portable and human-readable —
-  // even though the live/linked stores are now SQLite. `writeJsonFile` /
-  // `pickSaveJsonFile` are separate IPC channels from `dbWrite` /
-  // `pickSaveFile` specifically so this never gets routed through the
-  // SQLite translation layer in main.cjs. See ARCHITECTURE.md.
+  // Manual backup/restore now produces/consumes raw .sqlite3 files, same as
+  // the web adapter. `downloadBackup` reuses the same `pickSaveFile` +
+  // `dbWrite` IPC channels as the linked-file feature — a backup is just a
+  // one-shot full-replace write to a path the user picks instead of the
+  // remembered linked path. `uploadBackup` reads the picked File's raw
+  // bytes (standard Web File API, no IPC needed for that part) and hands
+  // them to `dbReadFromBytes`, which writes them to a temp file on the
+  // main-process side (better-sqlite3 has no in-memory-buffer API) and
+  // parses it through the normal DB-reading code.
   async downloadBackup(data: LedgerData): Promise<void> {
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    const picked = await bridge().pickSaveJsonFile(`ledger-${stamp}.json`);
+    const picked = await bridge().pickSaveFile(`ledger-${stamp}.sqlite3`);
     if (!picked.ok) return;
-    const res = await bridge().writeJsonFile(
-      picked.filePath,
-      JSON.stringify(data, null, 2),
-    );
+    const res = await bridge().dbWrite(picked.filePath, JSON.stringify(data));
     if (!res.ok) alert("Could not save backup: " + res.error);
   }
 
   async uploadBackup(file: File): Promise<unknown> {
-    const text = await file.text();
-    return JSON.parse(text);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const res = await bridge().dbReadFromBytes(bytes);
+    if (!res.ok) throw new Error(res.error);
+    return JSON.parse(res.data);
   }
 }

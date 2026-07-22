@@ -7,8 +7,7 @@ contextBridge.exposeInMainWorld('electronLedger', {
   getDefaultPath: () => ipcRenderer.invoke('ledger:getDefaultPath'),
   dbRead: (filePath) => ipcRenderer.invoke('ledger:dbRead', filePath),
   dbWrite: (filePath, jsonContents) => ipcRenderer.invoke('ledger:dbWrite', filePath, jsonContents),
-  writeJsonFile: (filePath, jsonContents) => ipcRenderer.invoke('ledger:writeJsonFile', filePath, jsonContents),
+  dbReadFromBytes: (bytes) => ipcRenderer.invoke('ledger:dbReadFromBytes', bytes),
   pickOpenFile: () => ipcRenderer.invoke('ledger:pickOpenFile'),
-  pickSaveFile: (defaultName) => ipcRenderer.invoke('ledger:pickSaveFile', defaultName),
-  pickSaveJsonFile: (defaultName) => ipcRenderer.invoke('ledger:pickSaveJsonFile', defaultName)
+  pickSaveFile: (defaultName) => ipcRenderer.invoke('ledger:pickSaveFile', defaultName)
 });

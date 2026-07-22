@@ -66,10 +66,13 @@ export interface PersistenceAdapter {
   /** Forget the linked file (local data is untouched). */
   disconnect(): Promise<void>;
 
-  /** Manual backup: save a timestamped JSON snapshot (download / share sheet). */
+  /** Manual backup: save a timestamped .sqlite3 database snapshot (download /
+   * share sheet). Unlike `writeLinkedFile`, this is a one-shot export the
+   * user explicitly triggers, not something kept in sync on every save. */
   downloadBackup(data: LedgerData): Promise<void>;
 
-  /** Manual restore: read a JSON file the user picked and return the parsed data. */
+  /** Manual restore: read a .sqlite3 file the user picked, replace the
+   * local store's contents with it, and return the resulting data. */
   uploadBackup(file: File): Promise<unknown>;
 
   getFileStatus(): FileLinkStatus;

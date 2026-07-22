@@ -1,8 +1,7 @@
 // Port of js/components/SettingsView.js — default account, database file
-// linking (platform-aware), and manual JSON backup. The always-on store is
-// SQLite everywhere now (see ARCHITECTURE.md); this page's copy reflects
-// that a "linked file" on web/macOS is a .sqlite3 database, while manual
-// backups stay portable JSON on every platform.
+// linking (platform-aware), and manual backup. The always-on store is
+// SQLite everywhere now (see ARCHITECTURE.md), and manual backups are raw
+// .sqlite3 database snapshots too, on every platform.
 import { useRef } from 'react';
 import { useLedgerStore } from '@/store/useLedgerStore';
 import { AccountPicker } from '@/components/AccountPicker';
@@ -115,13 +114,13 @@ export default function SettingsPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">Manual backup</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <p className="text-sm text-muted-foreground">Save a snapshot, or load one back in — handy regardless of whether a file is linked.</p>
+          <p className="text-sm text-muted-foreground">Save a .sqlite3 snapshot, or load one back in — handy regardless of whether a file is linked.</p>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => downloadBackup()}>
-              {platform === 'ios' ? 'Share backup' : 'Download JSON'}
+              {platform === 'ios' ? 'Share backup' : 'Download backup'}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => uploadInput.current?.click()}>Upload JSON</Button>
-            <input ref={uploadInput} type="file" accept="application/json,.json" className="hidden" onChange={handleUpload} />
+            <Button size="sm" variant="outline" onClick={() => uploadInput.current?.click()}>Upload backup</Button>
+            <input ref={uploadInput} type="file" accept=".sqlite3,.sqlite,.db" className="hidden" onChange={handleUpload} />
           </div>
         </CardContent>
       </Card>

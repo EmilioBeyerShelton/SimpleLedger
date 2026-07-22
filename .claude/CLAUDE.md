@@ -60,11 +60,14 @@ follow when adding or changing code here.
     future feature needs incremental writes for performance, that's a
     `ledgerRepository.ts` change, not something to bolt onto individual
     adapters.
-11. **Manual backup/restore (`downloadBackup`/`uploadBackup`) stays JSON,
-    on every platform, even though the live/linked stores are SQLite.**
-    Don't make backups produce `.sqlite3` files — the point of keeping
-    this path JSON is portability across platforms/app versions and
-    reuse of the `normalize()` migration.
+11. **Manual backup/restore (`downloadBackup`/`uploadBackup`) produces and
+    consumes raw `.sqlite3` files, on every platform, matching the
+    live/linked stores.** Don't make backups go back to JSON. `uploadBackup()`
+    must still run its result through `normalize()` before it reaches the
+    store, so legacy shapes inside a restored database are still handled —
+    but the wire format at the platform boundary (web: exported OPFS
+    bytes; macOS: a temp-file round trip through `better-sqlite3`; iOS: the
+    plugin's native `.db` file read/written directly) is SQLite, not JSON.
 
 ## Adding a feature
 

@@ -21,6 +21,8 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
+const os = require('node:os');
+const crypto = require('node:crypto');
 const Database = require('better-sqlite3');
 
 // `app.isPackaged` is false any time you run `electron .` from source —
@@ -229,17 +231,23 @@ ipcMain.handle('ledger:dbWrite', async (_evt, filePath, jsonContents) => {
   }
 });
 
-// Used only for the manual "download backup" snapshot (Settings tab) —
-// deliberately plain JSON on disk, not a .sqlite3 file, so it's portable
-// and human-readable. See ARCHITECTURE.md for why backups stay JSON while
-// the live/linked stores are SQLite.
-ipcMain.handle('ledger:writeJsonFile', async (_evt, filePath, jsonContents) => {
+// Used only for the manual "upload backup" flow (Settings tab): the
+// renderer reads a .sqlite3 file the user picked into memory (a File
+// object's bytes, via the standard Web File API — no IPC needed for that
+// part) and hands the raw bytes here. better-sqlite3 has no "open from an
+// in-memory buffer" API, only a file path, so this writes the bytes to a
+// throwaway temp file, reads it with the normal DB-reading code path, and
+// cleans up — the renderer never needs to know a temp file was involved.
+ipcMain.handle('ledger:dbReadFromBytes', async (_evt, bytes) => {
+  const tempPath = path.join(os.tmpdir(), `ledger-upload-${crypto.randomUUID()}.sqlite3`);
   try {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, jsonContents, 'utf-8');
-    return { ok: true };
+    await fs.writeFile(tempPath, Buffer.from(bytes));
+    const data = readLedgerDataFromDb(tempPath);
+    return { ok: true, data: JSON.stringify(data) };
   } catch (err) {
     return { ok: false, error: String(err.message || err) };
+  } finally {
+    await fs.unlink(tempPath).catch(() => {});
   }
 });
 

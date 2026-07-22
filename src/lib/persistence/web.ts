@@ -332,26 +332,37 @@ export class WebPersistenceAdapter implements PersistenceAdapter {
     this.status = { ...this.status, linked: false, name: null, needsReconnect: false, error: null };
   }
 
-  // Manual backup/restore deliberately stays JSON, not raw .sqlite3 bytes —
-  // portable across platforms and app versions, human-readable, and reuses
-  // the existing normalize() migration path. Only the *linked file* mirror
-  // above uses the raw database format.
-  async downloadBackup(data: LedgerData): Promise<void> {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  // Manual backup/restore is the raw .sqlite3 database — the same bytes
+  // `writeLinkedFile` mirrors to a linked file, just downloaded as a
+  // one-shot export instead of kept in sync. `data` isn't used directly
+  // here (it's already committed to the OPFS db by the time the user
+  // triggers a backup); exporting straight from the live db guarantees the
+  // downloaded file is byte-identical to what's actually stored.
+  async downloadBackup(_data: LedgerData): Promise<void> {
+    const bytes = await this.exportBytes();
+    const blob = new Blob([bytes.slice().buffer], { type: 'application/x-sqlite3' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
     a.href = url;
-    a.download = 'ledger-' + stamp + '.json';
+    a.download = 'ledger-' + stamp + '.sqlite3';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
 
+  // Replaces the live OPFS database's contents with the picked .sqlite3
+  // file, then reads the result back out — same mechanism `connectExisting`
+  // uses for a linked file, just triggered as a one-shot restore instead of
+  // an ongoing link. The store's uploadBackup() action runs the returned
+  // object through normalize() same as every other platform; readLedgerData
+  // already returns a well-shaped LedgerData, so that's a cheap no-op
+  // re-validation, not a real transformation.
   async uploadBackup(file: File): Promise<unknown> {
-    const text = await file.text();
-    return JSON.parse(text);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    await this.importBytes(bytes);
+    return readLedgerData(this.exec);
   }
 }
 

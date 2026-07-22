@@ -46,16 +46,36 @@ interface LedgerState {
   uploadBackup: (file: File) => Promise<{ ok: boolean; error?: string }>;
 }
 
+// Module-scoped (not store state) so it survives independently of
+// re-renders and is shared across every call site. `init()` needs to be
+// idempotent: React 18 StrictMode deliberately double-invokes effects in
+// dev (mount -> cleanup -> mount again) to surface exactly this kind of
+// bug, and App.tsx's `useEffect(() => { init(); }, [])` has no cleanup to
+// prevent a second call. Without this guard, a second `loadInitial()` call
+// re-runs `WebPersistenceAdapter.openDb()`, which spins up a second Worker
+// that tries to claim the same OPFS SAHPool VFS the first one still holds
+// open — surfaces as `NoModificationAllowedError: ... createSyncAccessHandle
+// ... cannot be created if there is another open Access Handle`. Memoizing
+// the in-flight/completed promise means every caller (StrictMode's second
+// effect run, or anything else that calls `init()`) gets the same result
+// instead of re-running the adapter's setup.
+let initPromise: Promise<void> | null = null;
+
 export const useLedgerStore = create<LedgerState>((set, get) => ({
   data: null,
   loading: true,
   fileStatus: { supported: false, linked: false, name: null, needsReconnect: false, error: null },
   adapter: null,
 
-  init: async () => {
-    const adapter = await getPersistenceAdapter();
-    const { data, fileStatus } = await adapter.loadInitial();
-    set({ data, fileStatus, adapter, loading: false });
+  init: () => {
+    if (!initPromise) {
+      initPromise = (async () => {
+        const adapter = await getPersistenceAdapter();
+        const { data, fileStatus } = await adapter.loadInitial();
+        set({ data, fileStatus, adapter, loading: false });
+      })();
+    }
+    return initPromise;
   },
 
   mutate: updater => {

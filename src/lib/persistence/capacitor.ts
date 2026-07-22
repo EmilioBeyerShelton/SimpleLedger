@@ -28,6 +28,26 @@ import type { LedgerData } from '@/types/ledger';
 const DB_NAME = 'ledger';
 const LINK_FLAG_KEY = 'ledger_file_linked_v1';
 const MIRROR_FILE_NAME = 'ledger-data.json';
+// @capacitor-community/sqlite names the on-disk file `<dbname>SQLite.db`
+// (unencrypted) and stores it under the location configured via
+// `iosDatabaseLocation` in capacitor.config.ts, which this project already
+// sets to `Library/CapacitorDatabase`. There's no public plugin API to
+// export/import raw bytes, so manual backup/restore reads and overwrites
+// that file directly through @capacitor/filesystem — the closest iOS
+// equivalent to the raw .sqlite3 download/upload on web and macOS. This
+// path is a documented convention of the plugin, not a guarantee; if a
+// future plugin version changes it, this needs to change too.
+const NATIVE_DB_DIRECTORY = Directory.Library;
+const NATIVE_DB_PATH = 'CapacitorDatabase/ledgerSQLite.db';
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
 
 function makeExecutor(db: SQLiteDBConnection): SqlExecutor {
   return {
@@ -161,23 +181,35 @@ export class CapacitorPersistenceAdapter implements PersistenceAdapter {
     this.status = { ...this.status, linked: false, name: null, needsReconnect: false, error: null };
   }
 
-  // Manual backup/restore stays JSON, same as the linked-file mirror above
-  // and same as every other platform — see web.ts for the rationale.
-  async downloadBackup(data: LedgerData): Promise<void> {
+  // Manual backup/restore now shares/replaces the raw native .sqlite3 file
+  // (see NATIVE_DB_PATH above), matching web/macOS. Reading it while the
+  // connection is open is safe here because every write goes through
+  // writeLedgerData()'s single-transaction full-replace (rule #10), so
+  // there's no partial/uncommitted state to catch mid-write; SQLite's
+  // default journal mode also checkpoints back into the main file rather
+  // than leaving data stranded in a sidecar -wal file between saves.
+  async downloadBackup(_data: LedgerData): Promise<void> {
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    const fileName = `ledger-${stamp}.json`;
-    await Filesystem.writeFile({
-      path: fileName,
-      directory: Directory.Cache,
-      data: JSON.stringify(data, null, 2),
-      encoding: Encoding.UTF8
-    });
+    const fileName = `ledger-${stamp}.sqlite3`;
+    const native = await Filesystem.readFile({ path: NATIVE_DB_PATH, directory: NATIVE_DB_DIRECTORY });
+    const base64 = typeof native.data === 'string' ? native.data : uint8ArrayToBase64(new Uint8Array(await (native.data as Blob).arrayBuffer()));
+    await Filesystem.writeFile({ path: fileName, directory: Directory.Cache, data: base64 });
     const { uri } = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
     await Share.share({ title: 'SimpleLedger backup', url: uri });
   }
 
+  // Restoring means replacing the native db file's bytes outright, so the
+  // live connection has to be closed first (SQLite doesn't support having
+  // its underlying file swapped out from under an open handle) and
+  // reopened afterward — openDb() also re-runs createSchema, which is a
+  // no-op (CREATE TABLE IF NOT EXISTS-equivalent) against the freshly
+  // restored file.
   async uploadBackup(file: File): Promise<unknown> {
-    const text = await file.text();
-    return JSON.parse(text);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const base64 = uint8ArrayToBase64(bytes);
+    await this.sqlite.closeConnection(DB_NAME, false);
+    await Filesystem.writeFile({ path: NATIVE_DB_PATH, directory: NATIVE_DB_DIRECTORY, data: base64 });
+    await this.openDb();
+    return readLedgerData(this.exec);
   }
 }
