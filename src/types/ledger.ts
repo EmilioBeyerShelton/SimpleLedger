@@ -52,6 +52,17 @@ export interface GroupTransaction {
 
 export interface Settings {
   defaultAccountId: string | null;
+  /** True once the first-visit "try demo data?" prompt has been shown and
+   * dismissed (either choice). Optional/backfillable — normalize() backfills
+   * `true` for any pre-existing dataset that already has real content, so
+   * upgrading users don't get the prompt resurfaced; only a genuinely fresh
+   * install starts out `false`. */
+  hasSeenWelcome?: boolean;
+  /** True while the currently-loaded data is the generated demo dataset and
+   * the user hasn't yet said whether to keep or discard it. Sticks around
+   * across reloads (it's part of LedgerData, not view state) so the
+   * keep/delete prompt reappears on every visit until resolved. */
+  isDemoData?: boolean;
 }
 
 export interface LedgerData {

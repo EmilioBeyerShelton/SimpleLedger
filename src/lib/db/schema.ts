@@ -17,7 +17,8 @@
 //    since the brief called for normalized tables and splits are the one
 //    place per-row amounts genuinely benefit from it.
 //  - `settings` is a single-row key/value table so the shape can grow
-//    (today it only holds `defaultAccountId`) without a migration.
+//    (today it holds `defaultAccountId`, `hasSeenWelcome`, `isDemoData`)
+//    without a migration.
 //  - `transactions.photo` is a nullable TEXT column holding a base64
 //    `data:image/jpeg;base64,...` data URL, already downscaled+recompressed
 //    client-side (see src/lib/utils/image.ts) before it's ever written

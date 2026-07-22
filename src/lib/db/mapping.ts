@@ -65,10 +65,25 @@ export function rowsToGroupTransactions(gtRows: GroupTransactionRow[], splitRows
 }
 
 export function settingsToRows(settings: LedgerData['settings']): SettingRow[] {
-  return [{ key: 'defaultAccountId', value: settings.defaultAccountId }];
+  return [
+    { key: 'defaultAccountId', value: settings.defaultAccountId },
+    { key: 'hasSeenWelcome', value: settings.hasSeenWelcome ? '1' : '0' },
+    { key: 'isDemoData', value: settings.isDemoData ? '1' : '0' }
+  ];
 }
 
 export function rowsToSettings(rows: SettingRow[]): LedgerData['settings'] {
-  const row = rows.find(r => r.key === 'defaultAccountId');
-  return { defaultAccountId: row?.value ?? null };
+  const byKey = new Map(rows.map(r => [r.key, r.value]));
+  // `hasSeenWelcome` didn't exist as a settings key before this feature —
+  // a row missing entirely means "this database predates the welcome
+  // prompt", which is existing content, not a fresh install, so default
+  // to true (already seen) rather than resurfacing the prompt for
+  // everyone upgrading. A genuinely new database always writes an
+  // explicit '0' row up front (see defaultData()/loadInitial()), so that
+  // case is never ambiguous.
+  return {
+    defaultAccountId: byKey.get('defaultAccountId') ?? null,
+    hasSeenWelcome: byKey.has('hasSeenWelcome') ? byKey.get('hasSeenWelcome') === '1' : true,
+    isDemoData: byKey.get('isDemoData') === '1'
+  };
 }

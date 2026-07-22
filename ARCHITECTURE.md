@@ -16,10 +16,11 @@ features, same data shape, three build targets instead of one.
    sankey/pie charts, the legacy-data migration) is a direct port. Look at
    the top-of-file comment in each source file — it names the original
    `js/*.js` file it replaces.
-3. **Mobile-first, works everywhere.** Bottom tab bar on narrow viewports,
-   the same bar becomes a top bar on wide/desktop layouts (`md:` Tailwind
-   variants in `BottomNav`/`App`). `env(safe-area-inset-*)` is respected
-   for iOS notches/home indicators.
+3. **Mobile-first, works everywhere.** Bottom tab bar (`BottomNav`) on
+   narrow viewports; on wide/desktop layouts navigation moves into
+   `TopBar` instead and `BottomNav` hides itself (`md:` Tailwind variants
+   in both — see "UI: shadcn/ui + Tailwind" below). `env(safe-area-inset-*)`
+   is respected for iOS notches/home indicators.
 
 ## Directory layout
 
@@ -50,8 +51,8 @@ portToReact/
     store/
       useLedgerStore.ts      Zustand store — all state + mutations, talks only to PersistenceAdapter
     components/
-      ui/                    shadcn/ui primitives (button, input, dialog, select, ...)
-      layout/                TopBar, BottomNav
+      ui/                    shadcn/ui primitives (button, input, dialog, select, navigation-menu, ...)
+      layout/                TopBar (desktop nav + title), BottomNav (mobile nav), navTabs.ts (shared tab list)
       AccountPicker.tsx, ExpenseForm.tsx, AccountForm.tsx, PieChart.tsx, SankeyChart.tsx
       PhotoPicker.tsx, PhotoCropDialog.tsx    capture -> crop -> compress -> attach (see "Expense photos")
     pages/                  one file per tab: Transactions, Report, Accounts, Budgets, Settings
@@ -131,8 +132,14 @@ Two deliberate simplifications:
   `group_transaction` — this is the one place per-row amounts genuinely
   benefit from normalization.
 
-`settings` is a single-row-per-key table (today just `defaultAccountId`)
-so the shape can grow without a schema migration.
+`settings` is a single-row-per-key table (`defaultAccountId`,
+`hasSeenWelcome`, `isDemoData` today) so the shape can grow without a
+schema migration. `hasSeenWelcome` and `isDemoData` back the first-visit
+"try demo data?" prompt and the "still using the demo data — keep or
+delete?" prompt (`src/components/DataOnboardingPrompts.tsx`) — both live
+in `LedgerData.settings` rather than `localStorage`/component state so
+they behave identically across reloads and every platform, and survive
+manual backup/restore the same way the rest of the data does.
 
 `transactions.photo` is a nullable TEXT column holding an optional receipt
 photo as a `data:image/jpeg;base64,...` data URL — a BLOB would be more
@@ -383,12 +390,12 @@ inline `groupId`/`splits`, etc.) are still handled correctly.
 ## UI: shadcn/ui + Tailwind
 
 `src/components/ui/*` are hand-vendored shadcn/ui primitives (Button,
-Input, Dialog, Select, Checkbox, Tabs, Slider, Card, Badge, Label) built
-on Radix primitives + `class-variance-authority` + `tailwind-merge`, the
-same pattern the shadcn CLI generates. They're committed to the repo
-(shadcn is a copy-paste library, not an npm dependency) so they can be
-freely edited — see the project rules in `.claude/CLAUDE.md` for the
-convention this implies.
+Input, Dialog, Select, Checkbox, Tabs, Slider, Card, Badge, Label,
+NavigationMenu) built on Radix primitives + `class-variance-authority` +
+`tailwind-merge`, the same pattern the shadcn CLI generates. They're
+committed to the repo (shadcn is a copy-paste library, not an npm
+dependency) so they can be freely edited — see the project rules in
+`.claude/CLAUDE.md` for the convention this implies.
 
 `components.json` at the repo root is the shadcn CLI's config file — it
 points the CLI at `src/components/ui` (via the `@/` alias), the Tailwind
@@ -402,6 +409,114 @@ somewhere to drop *new* ones going forward.
 Theme tokens live in `src/styles/globals.css` as CSS variables
 (`--primary`, `--background`, etc.), matching the original app's warm
 green/cream palette from `index.html`'s inline `<style>`.
+
+### `Dialog` on mobile: top-anchored + drag-to-dismiss
+
+`DialogContent` (`ui/dialog.tsx`) behaves differently by breakpoint, and
+this applies to every dialog in the app (add/edit expense, filters, photo
+preview/crop, etc.) since they all go through this one shared component:
+
+- **Mobile** (below `md:`): anchored near the top of the screen
+  (`top-[max(1rem,env(safe-area-inset-top))]`, respecting the notch).
+  Pulling down from *anywhere* in the dialog past
+  `DRAG_DISMISS_THRESHOLD_PX` (200px) dismisses it, by programmatically
+  clicking the same `DialogPrimitive.Close` button the visible "X" uses —
+  going through a real click rather than reaching into Radix's internal
+  open-state context directly, so it stays a supported interaction even if
+  Radix's internals change. Releasing short of the threshold animates back
+  via the class's own `transition-transform`; the drag itself sets
+  `transition: none` inline while active so the dialog tracks the finger
+  1:1 with no lag. Two guards keep this from fighting normal interaction
+  with the dialog's contents, both checked at `pointerdown`:
+  - `isInteractiveTarget()` skips arming the drag if the touch started on
+    a button/link/input/textarea/select/`role="button"`/editable element,
+    so taps and text editing inside the dialog work unimpeeded.
+  - The drag only arms when `contentRef.current.scrollTop` is already
+    `0` — on a dialog tall enough to scroll internally
+    (`overflow-y-auto`), the first part of a downward drag scrolls the
+    content back up like normal; only once already at the top does
+    further pulling drag the dialog itself. `overscroll-y-contain` is set
+    alongside this so iOS's own elastic bounce at that scroll boundary
+    doesn't visually fight the JS-driven drag.
+- **Desktop** (`md:` and up): unchanged — centered via `top-1/2
+  -translate-y-1/2`, and `isDesktopViewport()` bails out of the pointer
+  handlers entirely so there's no drag behavior to speak of.
+
+`isDesktopViewport()` checks `window.matchMedia('(min-width: 768px)')`
+(Tailwind's default `md`) at drag-start time rather than tracking resize
+continuously, since a dialog's presentation mode within a single
+open/close cycle doesn't realistically change mid-gesture.
+
+### Navigation: `TopBar.tsx` / `BottomNav.tsx`
+
+Both read from the same `NAV_TABS` list (`layout/navTabs.ts`) so the tab
+set can't drift between the two, and both compute "is this tab active"
+the same way: a small per-tab subcomponent (`TopBarTab` /
+`BottomNavTab`) calls react-router's `useMatch({ path: tab.to, end:
+tab.end })` up front and hands the resulting boolean into a plain
+**string** className, via a plain `Link`. Neither uses `NavLink`'s usual
+function-form `className={({ isActive }) => ...}` pattern, even though
+that's the idiomatic react-router shape and would work fine in
+`BottomNav` on its own — they're kept identical across both components on
+purpose, because of a real bug this project shipped and had to track down
+in `TopBar` specifically:
+
+`TopBar`'s links are wrapped in Radix's `<NavigationMenuLink asChild>`.
+`asChild` composes props onto its child via `@radix-ui/react-slot`'s
+`Slot`, which merges `className` props with `[slotClassName,
+childClassName].filter(Boolean).join(' ')` — code that assumes both sides
+are strings. Handed a *function* (`NavLink`'s className form), `.join(' ')`
+calls `.toString()` on it, silently replacing the whole className with the
+function's **source code as text** — which matches no real Tailwind
+class, so the tab never visibly highlighted. `useMatch()` + a plain
+string sidesteps the function-className path entirely. `active={isActive}`
+is also passed to `NavigationMenuLink` so Radix's own
+`aria-current`/`data-active` attributes stay correct for a11y, even
+though the visual styling doesn't depend on them.
+
+`BottomNav` never had this bug — it renders `NavLink` directly, no Radix
+`asChild` wrapper in between — but it uses the identical `useMatch()`
+pattern anyway, so "is this tab active" is computed exactly one way
+across the whole app instead of two subtly different ones that only
+happen to look the same. The takeaway if either component is touched
+again: never hand a `className` **function** to anything that's a child
+of a Radix (or any `@radix-ui/react-slot`-based) `asChild` wrapper —
+compute the string yourself first.
+
+- **`TopBar`** is a 3-column grid (`1fr auto 1fr`), not a two-item
+  `justify-between` row: with just a title on the left and the nav on the
+  right, `justify-between` centers the nav in whatever space is left
+  *after* the title rather than in the header as a whole, so it visibly
+  drifts off-center once the title has any width. The empty third column
+  balances the title's column so the middle (nav) column centers against
+  the full header width. The active tab gets a solid `bg-primary
+  text-primary-foreground` pill (matching `Button`'s default variant) —
+  deliberately not the low-contrast `bg-accent` used for hover, which
+  reads as barely-there against the header background.
+- The title itself renders two responsive `<span>`s rather than one: full
+  "SimpleLedger" by default (mobile, where the nav is hidden so there's no
+  competition for space, and again at `lg:` where there's room for both),
+  abbreviated to "SL" specifically in the squeezed `md:`..`lg:` range
+  where the nav bar and title are on the same row. This is a
+  breakpoint-tier approximation of "abbreviate when there's no room," not
+  a true container-query/measurement-based fit — consistent with the rest
+  of this app's Tailwind-breakpoint-driven responsive design rather than
+  introducing `ResizeObserver`-based logic for one label.
+- **`BottomNav`** is the mobile tab bar (icons + labels, fixed to the
+  bottom via `sticky bottom-0` + the `.safe-bottom` utility) and hides
+  itself entirely at `md:` and up (`md:hidden`) — it doesn't try to
+  reshape into a top bar the way an earlier version of this app did.
+
+That earlier version *did* try to make `BottomNav` become the desktop top
+bar in place, via `md:static md:order-first` plus `App.tsx` wrapping
+everything in `md:flex-col-reverse`. That combination had a real bug,
+worth remembering if a similar trick is ever tempting again: in a
+`flex-col-reverse` container, the main axis's "start" edge — where
+`order-first`'s `order: -9999` pins an item — is the *bottom* of the
+screen, not the top. So instead of floating to the top on desktop as
+intended, the nav bar stayed pinned to the bottom. `App.tsx` is back to a
+plain `flex-col` now that `TopBar` owns desktop navigation outright, so
+there's no reordering trick left to get wrong.
 
 ## Routing
 

@@ -14,7 +14,9 @@ export function defaultData(): LedgerData {
     groups: [],
     groupTransactions: [],
     settings: {
-      defaultAccountId: 'assets.bank_accounts.checkings'
+      defaultAccountId: 'assets.bank_accounts.checkings',
+      hasSeenWelcome: false,
+      isDemoData: false
     }
   };
 }
@@ -127,11 +129,21 @@ export function normalize(parsed: unknown): LedgerData {
     }
   });
 
+  // A dataset is "pre-existing" (not a brand-new install) if it already has
+  // any real content. Old exports/backups never had `hasSeenWelcome` at
+  // all — backfill `true` for those so upgrading users don't get the
+  // first-visit prompt resurfaced; a genuinely fresh install (no parsed
+  // object, or one indistinguishable from defaultData()) keeps `false`.
+  const hasContent = transactions.length > 0 || groups.length > 0 || accounts.some((a: any) => !base.accounts.some(ba => ba.id === a.id));
+  const settingsIn = p.settings && typeof p.settings === 'object' ? p.settings : {};
+
   const settings = {
     defaultAccountId:
-      p.settings && typeof p.settings.defaultAccountId === 'string' && p.settings.defaultAccountId
-        ? mapAccountRef(p.settings.defaultAccountId)
-        : base.settings.defaultAccountId
+      typeof settingsIn.defaultAccountId === 'string' && settingsIn.defaultAccountId
+        ? mapAccountRef(settingsIn.defaultAccountId)
+        : base.settings.defaultAccountId,
+    hasSeenWelcome: typeof settingsIn.hasSeenWelcome === 'boolean' ? settingsIn.hasSeenWelcome : hasContent,
+    isDemoData: typeof settingsIn.isDemoData === 'boolean' ? settingsIn.isDemoData : false
   };
 
   return { accounts, transactions, groups, groupTransactions, settings };

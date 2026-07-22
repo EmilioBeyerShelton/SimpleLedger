@@ -2,9 +2,10 @@
 // linking (platform-aware), and manual backup. The always-on store is
 // SQLite everywhere now (see ARCHITECTURE.md), and manual backups are raw
 // .sqlite3 database snapshots too, on every platform.
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useLedgerStore } from '@/store/useLedgerStore';
 import { AccountPicker } from '@/components/AccountPicker';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -27,7 +28,11 @@ export default function SettingsPage() {
   const disconnect = useLedgerStore(s => s.disconnect);
   const downloadBackup = useLedgerStore(s => s.downloadBackup);
   const uploadBackup = useLedgerStore(s => s.uploadBackup);
+  const loadDemoData = useLedgerStore(s => s.loadDemoData);
+  const clearData = useLedgerStore(s => s.clearData);
   const uploadInput = useRef<HTMLInputElement>(null);
+  const [showDemoConfirm, setShowDemoConfirm] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const platform = adapter?.platform ?? 'web';
   const placeLabel = PLATFORM_LABEL[platform] ?? 'this device';
@@ -40,6 +45,16 @@ export default function SettingsPage() {
     const result = await uploadBackup(file);
     if (result.ok) toast(`Loaded data from "${file.name}".`);
     else alert('Could not load file: ' + result.error);
+  }
+
+  function handleLoadDemoData() {
+    loadDemoData();
+    toast('Loaded demo data.');
+  }
+
+  function handleClearData() {
+    clearData();
+    toast('Data cleared.');
   }
 
   return (
@@ -124,6 +139,46 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Demo data</CardTitle></CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">Load sample accounts, two months of expenses, and a budget group — handy for trying the app out. This replaces whatever is currently stored.</p>
+          <div>
+            <Button size="sm" variant="outline" onClick={() => setShowDemoConfirm(true)}>Load demo data</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Reset</CardTitle></CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">Erase everything and start over with only the default accounts. This cannot be undone.</p>
+          <div>
+            <Button size="sm" variant="destructive" onClick={() => setShowClearConfirm(true)}>Clear data</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={showDemoConfirm}
+        onOpenChange={setShowDemoConfirm}
+        title="Load demo data?"
+        description="Replaces current data with sample accounts, expenses, and a budget group. This overwrites what's stored locally."
+        confirmLabel="Load demo data"
+        confirmVariant="default"
+        onConfirm={handleLoadDemoData}
+      />
+
+      <ConfirmDialog
+        open={showClearConfirm}
+        onOpenChange={setShowClearConfirm}
+        title="Clear all data?"
+        description="Erases everything and resets to only the default accounts. This cannot be undone."
+        confirmLabel="Clear data"
+        confirmVariant="destructive"
+        onConfirm={handleClearData}
+      />
     </div>
   );
 }
