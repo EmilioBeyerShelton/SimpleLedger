@@ -31,6 +31,7 @@ portToReact/
     types/ledger.ts        Account/Transaction/Group/GroupTransaction/Settings — the data shape
     lib/
       utils/ledger.ts       ported js/utils.js: formatting + ledger math
+      utils/image.ts         canvas-based photo downscale/recompress (no DOM-free constraint — see "Expense photos")
       utils.ts               shadcn's `cn()` classname helper
       db/
         schema.ts             SQLite DDL (normalized tables) — canonical for web + iOS
@@ -44,14 +45,14 @@ portToReact/
         webSqlite.worker.ts    Dedicated Worker owning the sqlite3/OPFS calls — see "Web" below
         capacitor.ts           iOS adapter: SQLite (@capacitor-community/sqlite) + Filesystem + Share
         electron.ts             macOS adapter: IPC to the main process (electron/main.cjs)
-        electron.d.ts            types for window.electronLedger
+        electronBridge.d.ts      types for window.electronLedger
         index.ts                 platform detection + adapter factory
     store/
       useLedgerStore.ts      Zustand store — all state + mutations, talks only to PersistenceAdapter
     components/
       ui/                    shadcn/ui primitives (button, input, dialog, select, ...)
       layout/                TopBar, BottomNav
-      AccountPicker.tsx, ExpenseForm.tsx, AccountForm.tsx, PieChart.tsx, SankeyChart.tsx
+      AccountPicker.tsx, ExpenseForm.tsx, AccountForm.tsx, PhotoPicker.tsx, PieChart.tsx, SankeyChart.tsx
     pages/                  one file per tab: Transactions, Report, Accounts, Budgets, Settings
     App.tsx                 shell: boots the store, renders TopBar/Outlet/BottomNav
     routes.tsx              react-router route table (HashRouter)
@@ -132,6 +133,27 @@ Two deliberate simplifications:
 `settings` is a single-row-per-key table (today just `defaultAccountId`)
 so the shape can grow without a schema migration.
 
+`transactions.photo` is a nullable TEXT column holding an optional receipt
+photo as a `data:image/jpeg;base64,...` data URL — a BLOB would be more
+space-efficient, but TEXT keeps the wire format identical (a plain JSON
+string) across every boundary this data crosses: Electron's IPC bridge,
+`.sqlite3` manual backups, and the `LedgerData` object itself. The image
+is downscaled (longest side ≤ 1600px) and recompressed as JPEG client-side
+by `src/lib/utils/image.ts` *before* it's ever attached to a `Transaction`
+— components never write an uncompressed photo into the store, so there's
+no "big blob briefly in SQLite" state to worry about.
+
+Because a schema-versioned table already existed on disk for some users
+before this column was added, `createSchema()`
+(`src/lib/db/ledgerRepository.ts`) and `openDb()` (`electron/main.cjs`)
+both follow their `CREATE TABLE IF NOT EXISTS` calls with a best-effort
+`ALTER TABLE transactions ADD COLUMN photo TEXT`, swallowing the "column
+already exists" error on every run after the first. This is the one
+column-add case this app has needed to handle post-launch; if the schema
+grows again, either extend this same pattern or, if that ever becomes
+awkward, revisit whether a lightweight schema-version table is worth
+introducing instead.
+
 **Writes are full-replace, not incremental.** `writeLedgerData()`
 (`src/lib/db/ledgerRepository.ts`) wipes every table and reinserts from
 the in-memory `LedgerData` object inside one transaction, on every save.
@@ -147,6 +169,34 @@ runs in the Node main process, outside Vite's module graph, so it carries
 its own plain-JS copy of the same DDL and mapping logic instead. Both
 copies are commented "KEEP IN SYNC" — if you change the table/column shape
 in `src/lib/db/schema.ts`, make the identical change in `main.cjs`.
+
+### Expense photos (`PhotoPicker.tsx`, `lib/utils/image.ts`)
+
+`ExpenseForm` has an optional photo field, backed by `PhotoPicker.tsx` and
+`@capacitor/camera`. The capture flow is the same on every platform for a
+reason worth calling out, since it looks at first glance like it should
+need a persistence-adapter-style platform split and doesn't:
+`@capacitor/camera`'s *web* implementation (used automatically whenever
+`Capacitor.isNativePlatform()` is false — i.e. the web build and Electron's
+renderer both) is itself just a `<input type="file">` with the `capture`
+attribute set based on the requested source. So `Camera.getPhoto({ source:
+CameraSource.Camera | CameraSource.Photos })` works unmodified on web,
+Electron, and native iOS; "Take photo" only degrades to a plain file
+picker on desktop browsers/Electron, which have no camera-capture UI to
+give it in the first place — the same kind of graceful degradation as
+linking/backups elsewhere in this app.
+
+Compression happens client-side, before the photo ever becomes part of a
+`Transaction`: `lib/utils/image.ts`'s `compressImage()` decodes the photo
+(`createImageBitmap`, with an `<img>`+canvas fallback for older WebViews),
+downscales it (longest side capped at 1600px) onto a canvas, and
+re-encodes it as JPEG at quality 0.75, returning a `data:image/jpeg;...`
+data URL. This is the one place in `lib/utils/` that isn't a pure
+DOM-free function (rule #3's "pure functions, unit-testable, no
+React/DOM" is about *business logic*, not this) — resizing/recompressing
+an image inherently needs a decoder and a canvas, and every platform this
+app renders on is a full DOM environment, so a single canvas-based
+implementation covers web, Electron, and iOS without a per-platform split.
 
 ### Web (`web.ts`)
 

@@ -77,6 +77,7 @@ export function normalize(parsed: unknown): LedgerData {
           amount: Number(t.amount) || 0,
           from: mapAccountRef(t.from),
           to: mapAccountRef(t.to),
+          photo: typeof t.photo === 'string' && t.photo ? t.photo : null,
           legacyGroupId: t.groupId != null && t.groupId !== '' ? Number(t.groupId) : null,
           legacySplits: Array.isArray(t.splits)
             ? t.splits.map((s: any) => ({ member: String(s.member || ''), amount: Number(s.amount) || 0 }))

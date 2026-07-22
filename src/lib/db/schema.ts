@@ -18,6 +18,11 @@
 //    place per-row amounts genuinely benefit from it.
 //  - `settings` is a single-row key/value table so the shape can grow
 //    (today it only holds `defaultAccountId`) without a migration.
+//  - `transactions.photo` is a nullable TEXT column holding a base64
+//    `data:image/jpeg;base64,...` data URL, already downscaled+recompressed
+//    client-side (see src/lib/utils/image.ts) before it's ever written
+//    here — not a BLOB, to keep the same wire format (JSON string) usable
+//    across every adapter boundary (Electron's IPC, JSON backups, etc).
 export const CREATE_TABLE_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS accounts (
      id    TEXT PRIMARY KEY,
@@ -29,7 +34,8 @@ export const CREATE_TABLE_STATEMENTS: string[] = [
      title        TEXT NOT NULL,
      amount       REAL NOT NULL,
      from_account TEXT NOT NULL REFERENCES accounts(id),
-     to_account   TEXT NOT NULL REFERENCES accounts(id)
+     to_account   TEXT NOT NULL REFERENCES accounts(id),
+     photo        TEXT
    )`,
   `CREATE TABLE IF NOT EXISTS groups (
      id      INTEGER PRIMARY KEY,

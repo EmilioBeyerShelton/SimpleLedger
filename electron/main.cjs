@@ -89,7 +89,8 @@ const CREATE_TABLE_STATEMENTS = [
      title        TEXT NOT NULL,
      amount       REAL NOT NULL,
      from_account TEXT NOT NULL REFERENCES accounts(id),
-     to_account   TEXT NOT NULL REFERENCES accounts(id)
+     to_account   TEXT NOT NULL REFERENCES accounts(id),
+     photo        TEXT
    )`,
   `CREATE TABLE IF NOT EXISTS groups (
      id      INTEGER PRIMARY KEY,
@@ -134,6 +135,12 @@ function openDb(filePath) {
   const db = new Database(filePath);
   db.pragma('journal_mode = WAL');
   for (const stmt of CREATE_TABLE_STATEMENTS) db.exec(stmt);
+  // `CREATE TABLE IF NOT EXISTS` doesn't retroactively add columns to a
+  // table that already existed (e.g. a db created before the `photo`
+  // column existed) — ALTER TABLE ADD COLUMN is the idempotent-ish way to
+  // backfill it; SQLite errors if the column's already there, which this
+  // just ignores.
+  try { db.exec('ALTER TABLE transactions ADD COLUMN photo TEXT'); } catch {}
   return db;
 }
 
@@ -142,10 +149,10 @@ function readLedgerDataFromDb(filePath) {
   try {
     const accounts = db.prepare('SELECT id, title FROM accounts').all();
     const transactionRows = db
-      .prepare('SELECT id, date, title, amount, from_account, to_account FROM transactions')
+      .prepare('SELECT id, date, title, amount, from_account, to_account, photo FROM transactions')
       .all();
     const transactions = transactionRows.map(t => ({
-      id: t.id, date: t.date, title: t.title, amount: t.amount, from: t.from_account, to: t.to_account
+      id: t.id, date: t.date, title: t.title, amount: t.amount, from: t.from_account, to: t.to_account, photo: t.photo ?? null
     }));
     const groupRows = db.prepare('SELECT id, name, members, budget FROM groups').all();
     const groups = groupRows.map(g => ({ id: g.id, name: g.name, members: safeParseMembers(g.members), budget: g.budget }));
@@ -175,7 +182,7 @@ function writeLedgerDataToDb(filePath, data) {
   try {
     const insertAccount = db.prepare('INSERT INTO accounts (id, title) VALUES (?, ?)');
     const insertTx = db.prepare(
-      'INSERT INTO transactions (id, date, title, amount, from_account, to_account) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO transactions (id, date, title, amount, from_account, to_account, photo) VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
     const insertGroup = db.prepare('INSERT INTO groups (id, name, members, budget) VALUES (?, ?, ?, ?)');
     const insertGt = db.prepare('INSERT INTO group_transactions (id, group_id, transaction_id) VALUES (?, ?, ?)');
@@ -185,7 +192,7 @@ function writeLedgerDataToDb(filePath, data) {
     const runFullReplace = db.transaction(d => {
       for (const table of TABLES_IN_DELETE_ORDER) db.prepare(`DELETE FROM ${table}`).run();
       (d.accounts || []).forEach(a => insertAccount.run(a.id, a.title));
-      (d.transactions || []).forEach(t => insertTx.run(t.id, t.date, t.title, t.amount, t.from, t.to));
+      (d.transactions || []).forEach(t => insertTx.run(t.id, t.date, t.title, t.amount, t.from, t.to, t.photo ?? null));
       (d.groups || []).forEach(g => insertGroup.run(g.id, g.name, JSON.stringify(g.members || []), g.budget ?? null));
       (d.groupTransactions || []).forEach(gt => {
         insertGt.run(gt.id, gt.groupId, gt.transactionId);
@@ -264,15 +271,6 @@ ipcMain.handle('ledger:pickSaveFile', async (_evt, defaultName) => {
   const result = await dialog.showSaveDialog(mainWindow, {
     defaultPath: defaultName || 'ledger.sqlite3',
     filters: [{ name: 'SQLite database', extensions: ['sqlite3', 'sqlite', 'db'] }]
-  });
-  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
-  return { ok: true, filePath: result.filePath };
-});
-
-ipcMain.handle('ledger:pickSaveJsonFile', async (_evt, defaultName) => {
-  const result = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: defaultName || 'ledger-backup.json',
-    filters: [{ name: 'JSON', extensions: ['json'] }]
   });
   if (result.canceled || !result.filePath) return { ok: false, canceled: true };
   return { ok: true, filePath: result.filePath };

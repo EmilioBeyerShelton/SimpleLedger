@@ -5,7 +5,7 @@
 import type { LedgerData, Account, Transaction, Group, GroupTransaction } from '@/types/ledger';
 
 export interface AccountRow { id: string; title: string }
-export interface TransactionRow { id: number; date: string; title: string; amount: number; from_account: string; to_account: string }
+export interface TransactionRow { id: number; date: string; title: string; amount: number; from_account: string; to_account: string; photo: string | null }
 export interface GroupRow { id: number; name: string; members: string; budget: number | null }
 export interface GroupTransactionRow { id: number; group_id: number; transaction_id: number }
 export interface SplitRow { group_transaction_id: number; member: string; amount: number }
@@ -20,11 +20,11 @@ export function rowsToAccounts(rows: AccountRow[]): Account[] {
 }
 
 export function transactionsToRows(transactions: Transaction[]): TransactionRow[] {
-  return transactions.map(t => ({ id: t.id, date: t.date, title: t.title, amount: t.amount, from_account: t.from, to_account: t.to }));
+  return transactions.map(t => ({ id: t.id, date: t.date, title: t.title, amount: t.amount, from_account: t.from, to_account: t.to, photo: t.photo ?? null }));
 }
 
 export function rowsToTransactions(rows: TransactionRow[]): Transaction[] {
-  return rows.map(r => ({ id: r.id, date: r.date, title: r.title, amount: r.amount, from: r.from_account, to: r.to_account }));
+  return rows.map(r => ({ id: r.id, date: r.date, title: r.title, amount: r.amount, from: r.from_account, to: r.to_account, photo: r.photo ?? null }));
 }
 
 export function groupsToRows(groups: Group[]): GroupRow[] {

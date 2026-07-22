@@ -29,12 +29,21 @@ export async function createSchema(exec: SqlExecutor): Promise<void> {
   for (const stmt of CREATE_TABLE_STATEMENTS) {
     await exec.run(stmt);
   }
+  // `CREATE TABLE IF NOT EXISTS` doesn't retroactively add columns to a
+  // table that already existed (e.g. a local db created before the
+  // `photo` column existed) — ALTER TABLE ADD COLUMN backfills it.
+  // SQLite errors if the column's already there; ignore that case.
+  try {
+    await exec.run('ALTER TABLE transactions ADD COLUMN photo TEXT');
+  } catch {
+    // already has the column
+  }
 }
 
 export async function readLedgerData(exec: SqlExecutor): Promise<LedgerData> {
   const [accountRows, transactionRows, groupRows, gtRows, splitRows, settingRows] = await Promise.all([
     exec.all<AccountRow>('SELECT id, title FROM accounts'),
-    exec.all<TransactionRow>('SELECT id, date, title, amount, from_account, to_account FROM transactions'),
+    exec.all<TransactionRow>('SELECT id, date, title, amount, from_account, to_account, photo FROM transactions'),
     exec.all<GroupRow>('SELECT id, name, members, budget FROM groups'),
     exec.all<GroupTransactionRow>('SELECT id, group_id, transaction_id FROM group_transactions'),
     exec.all<SplitRow>('SELECT group_transaction_id, member, amount FROM splits'),
@@ -66,8 +75,8 @@ export async function writeLedgerData(exec: SqlExecutor, data: LedgerData): Prom
     }
     for (const t of transactionRows) {
       await exec.run(
-        'INSERT INTO transactions (id, date, title, amount, from_account, to_account) VALUES (?, ?, ?, ?, ?, ?)',
-        [t.id, t.date, t.title, t.amount, t.from_account, t.to_account]
+        'INSERT INTO transactions (id, date, title, amount, from_account, to_account, photo) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [t.id, t.date, t.title, t.amount, t.from_account, t.to_account, t.photo]
       );
     }
     for (const g of groupRows) {

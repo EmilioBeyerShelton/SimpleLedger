@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { Account, Group, Settings, Transaction, TransactionFormPayload } from '@/types/ledger';
 import { todayStr, splitEqually } from '@/lib/utils/ledger';
 import { AccountPicker } from '@/components/AccountPicker';
+import { PhotoPicker } from '@/components/PhotoPicker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,7 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
   const [from, setFrom] = useState<string | null>(initial ? initial.from : defaultAccountId(accounts, preferredFromId, 0));
   const [to, setTo] = useState<string | null>(initial ? initial.to : defaultAccountId(accounts, FALLBACK_TO_ID, accounts.length > 1 ? 1 : 0));
   const [groupId, setGroupId] = useState<string>(initial && initial.groupId ? String(initial.groupId) : '');
+  const [photo, setPhoto] = useState<string | null>(initial?.photo ?? null);
   const [splitRows, setSplitRows] = useState<{ member: string; included: boolean; amount: number }[]>([]);
   const [showMore, setShowMore] = useState(isEdit);
   const [error, setError] = useState('');
@@ -110,13 +112,14 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
       }
     }
 
-    onSave({ title: trimmedTitle, amount: amountNum, date: date || todayStr(), from, to, groupId: groupId ? Number(groupId) : null, splits });
+    onSave({ title: trimmedTitle, amount: amountNum, date: date || todayStr(), from, to, groupId: groupId ? Number(groupId) : null, splits, photo });
 
     if (!isEdit) {
       setTitle('');
       setAmount('');
       setGroupId('');
       setSplitRows([]);
+      setPhoto(null);
     }
   }
 
@@ -132,6 +135,11 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="f-amount">Amount</Label>
         <Input id="f-amount" type="number" step="0.01" min="0" inputMode="decimal" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label>Photo</Label>
+        <PhotoPicker value={photo} onChange={setPhoto} />
       </div>
 
       <Button type="button" variant="ghost" size="sm" className="justify-start px-0" onClick={() => setShowMore(s => !s)}>

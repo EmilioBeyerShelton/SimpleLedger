@@ -20,6 +20,12 @@ export interface Transaction {
   from: string;
   /** Account id money arrives at. */
   to: string;
+  /** Optional receipt/photo, already downscaled+recompressed client-side
+   * (see lib/utils/image.ts) before it ever reaches this object — a
+   * `data:image/jpeg;base64,...` data URL, or null/omitted if none. Stored
+   * as TEXT in SQLite (see lib/db/schema.ts), same as everywhere else this
+   * object travels (JSON over the Electron IPC boundary, JSON backups). */
+  photo?: string | null;
 }
 
 export interface Group {
@@ -67,6 +73,7 @@ export interface TransactionFormPayload {
   to: string;
   groupId: number | null;
   splits: Split[] | null;
+  photo?: string | null;
 }
 
 export interface AccountFormPayload {
