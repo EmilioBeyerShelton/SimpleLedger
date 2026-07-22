@@ -32,14 +32,39 @@ follow when adding or changing code here.
    `env(safe-area-inset-*)` directly) for anything pinned to a screen
    edge.
 6. **No `localStorage`/`indexedDB` calls in components or the store.**
-   Those live inside `WebPersistenceAdapter` only. The macOS and iOS
-   builds don't have a meaningful `localStorage` (Electron's renderer
-   technically does, but only the linked-file *path* is stored there —
-   see `electron.ts` — never ledger data itself).
+   Those live inside `WebPersistenceAdapter` only, and only for
+   *metadata* (the linked file's handle/display name) — never ledger data
+   itself, which lives in SQLite. The macOS adapter's `localStorage` use
+   is the same: just the linked-file *path* string (see `electron.ts`).
 7. **Keep each ported file's header comment pointing at its original.**
    When you touch a file that says "Port of js/components/X.js", keep that
    provenance comment accurate, or remove it once the code has diverged
    enough that the comparison is no longer useful — don't leave it stale.
+8. **No raw SQL outside `src/lib/db/`, `main.cjs`'s SQLite section, and the
+   two adapters that drive a `SqlExecutor` (`web.ts`, `capacitor.ts`).**
+   Schema and row-mapping changes go in `src/lib/db/schema.ts` +
+   `mapping.ts`, which `ledgerRepository.ts` composes into
+   `readLedgerData()`/`writeLedgerData()` — adapters and pages call those,
+   they don't write `SELECT`/`INSERT` themselves.
+9. **`electron/main.cjs`'s schema/mapping block is a hand-duplicated copy
+   of `src/lib/db/schema.ts` + `mapping.ts`, not a bug.** It has to be:
+   `main.cjs` runs in the Node main process, outside Vite's module graph,
+   and can't `import` TypeScript. Both copies are marked "KEEP IN SYNC" —
+   changing the table/column shape in one without the other will silently
+   desync macOS from web/iOS. Change both in the same commit.
+10. **Writes to SQLite are full-replace (wipe + reinsert in one
+    transaction), not incremental.** Don't add per-field `UPDATE`
+    statements for individual mutations — `useLedgerStore.ts`'s `mutate()`
+    already recomputes the whole `LedgerData` tree per action, and
+    `writeLedgerData()` is built around consuming that whole tree. If a
+    future feature needs incremental writes for performance, that's a
+    `ledgerRepository.ts` change, not something to bolt onto individual
+    adapters.
+11. **Manual backup/restore (`downloadBackup`/`uploadBackup`) stays JSON,
+    on every platform, even though the live/linked stores are SQLite.**
+    Don't make backups produce `.sqlite3` files — the point of keeping
+    this path JSON is portability across platforms/app versions and
+    reuse of the `normalize()` migration.
 
 ## Adding a feature
 
@@ -64,6 +89,9 @@ follow when adding or changing code here.
   implementations, not just web (which is what you're likely running
   locally). The macOS/iOS ones can't be smoke-tested without an Xcode/
   Electron build, so read them carefully instead.
+- If you touched `src/lib/db/schema.ts` or `mapping.ts`, check that
+  `electron/main.cjs`'s duplicated copy still matches (rule 9) — `tsc`
+  can't catch a desync between a `.ts` file and a `.cjs` file for you.
 
 ## Commit hygiene
 

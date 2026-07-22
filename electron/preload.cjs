@@ -5,8 +5,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronLedger', {
   getDefaultPath: () => ipcRenderer.invoke('ledger:getDefaultPath'),
-  readFile: (filePath) => ipcRenderer.invoke('ledger:readFile', filePath),
-  writeFile: (filePath, contents) => ipcRenderer.invoke('ledger:writeFile', filePath, contents),
+  dbRead: (filePath) => ipcRenderer.invoke('ledger:dbRead', filePath),
+  dbWrite: (filePath, jsonContents) => ipcRenderer.invoke('ledger:dbWrite', filePath, jsonContents),
+  writeJsonFile: (filePath, jsonContents) => ipcRenderer.invoke('ledger:writeJsonFile', filePath, jsonContents),
   pickOpenFile: () => ipcRenderer.invoke('ledger:pickOpenFile'),
-  pickSaveFile: (defaultName) => ipcRenderer.invoke('ledger:pickSaveFile', defaultName)
+  pickSaveFile: (defaultName) => ipcRenderer.invoke('ledger:pickSaveFile', defaultName),
+  pickSaveJsonFile: (defaultName) => ipcRenderer.invoke('ledger:pickSaveJsonFile', defaultName)
 });

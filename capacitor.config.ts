@@ -10,6 +10,13 @@ const config: CapacitorConfig = {
   plugins: {
     Preferences: {
       group: 'SimpleLedgerGroup'
+    },
+    CapacitorSQLite: {
+      // No user data is encrypted at the SQLite layer — the database
+      // itself lives inside the app's sandboxed container, same trust
+      // boundary as every other file the app owns.
+      iosIsEncryption: false,
+      iosDatabaseLocation: 'Library/CapacitorDatabase'
     }
   }
 };

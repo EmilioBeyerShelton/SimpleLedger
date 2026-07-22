@@ -19,5 +19,16 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true
+  },
+  // @sqlite.org/sqlite-wasm (used by src/lib/persistence/web.ts) ships its
+  // own WASM/worker assets that esbuild's dependency pre-bundling mangles,
+  // and it needs ES-module-format workers — both are the package's own
+  // documented Vite integration requirements, not something specific to
+  // this app.
+  optimizeDeps: {
+    exclude: ['@sqlite.org/sqlite-wasm']
+  },
+  worker: {
+    format: 'es'
   }
 });

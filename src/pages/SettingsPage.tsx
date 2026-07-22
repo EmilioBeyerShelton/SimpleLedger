@@ -1,5 +1,8 @@
-// Port of js/components/SettingsView.js — default account, file
-// linking (platform-aware), and manual JSON backup.
+// Port of js/components/SettingsView.js — default account, database file
+// linking (platform-aware), and manual JSON backup. The always-on store is
+// SQLite everywhere now (see ARCHITECTURE.md); this page's copy reflects
+// that a "linked file" on web/macOS is a .sqlite3 database, while manual
+// backups stay portable JSON on every platform.
 import { useRef } from 'react';
 import { useLedgerStore } from '@/store/useLedgerStore';
 import { AccountPicker } from '@/components/AccountPicker';
@@ -56,10 +59,10 @@ export default function SettingsPage() {
         <CardHeader><CardTitle className="text-base">Data storage</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Everything is always saved on {placeLabel} automatically.{' '}
-            {platform === 'web' && 'You can optionally also link a JSON file on disk — every change is then written there too.'}
-            {platform === 'macos' && 'You can optionally also link a JSON file elsewhere on disk — every change is then written there too.'}
-            {platform === 'ios' && 'You can optionally also mirror a copy into the Files app for backup or AirDrop.'}
+            Everything is always saved on {placeLabel} automatically, in a SQLite database.{' '}
+            {platform === 'web' && 'You can optionally also link a .sqlite3 file on disk — every change is then written there too.'}
+            {platform === 'macos' && 'You can optionally also link a .sqlite3 file elsewhere on disk — every change is then written there too.'}
+            {platform === 'ios' && 'You can optionally also mirror a JSON snapshot into the Files app for backup or AirDrop.'}
           </p>
 
           <div className="flex items-center gap-2 rounded-md border p-3">

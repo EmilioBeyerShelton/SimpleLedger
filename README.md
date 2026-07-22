@@ -13,6 +13,16 @@ for the rules to follow when editing it.
 npm install
 ```
 
+Data is stored in a real SQLite database on every platform (web via
+`@sqlite.org/sqlite-wasm` + OPFS, iOS via `@capacitor-community/sqlite`,
+macOS via `better-sqlite3`) — see "Persistence layer" in `ARCHITECTURE.md`
+for the full design. The macOS build's `better-sqlite3` is a native
+module and needs to be compiled against Electron's Node ABI; `npm install`
+does this automatically via its `postinstall` script (needs Xcode Command
+Line Tools). If that step fails, web/iOS development is unaffected — run
+`npm run rebuild:electron` manually once you have the Command Line Tools
+installed, before using the Electron build.
+
 ## Web
 
 ```bash
@@ -45,13 +55,16 @@ npm run cap:ios     # builds the web bundle, syncs it into ios/, opens Xcode
 
 Run from Xcode as usual. In `ios/App/App/Info.plist`, add
 `UIFileSharingEnabled` (`YES`) and `LSSupportsOpeningDocumentsInPlace`
-(`YES`) so the mirrored `ledger-data.json` is visible under
+(`YES`) so the mirrored `ledger-data.json` snapshot is visible under
 **Files → On My iPhone/iPad → SimpleLedger** — see "iOS" in
-`ARCHITECTURE.md` for why that file exists.
+`ARCHITECTURE.md` for why that's a JSON snapshot and not the live database
+file itself.
 
 ## Data
 
-Same JSON shape as the original app (documented in `ARCHITECTURE.md`).
-Exports from the original vanilla-JS SimpleLedger, or from this React
-build on any platform, are interchangeable via the Settings tab's
-download/upload (or share, on iOS).
+The live database (a real SQLite file, or OPFS-backed SQLite on web) isn't
+meant to be hand-edited or moved between platforms directly. For that,
+use the Settings tab's download/upload (or share, on iOS) — it always
+produces and accepts the same portable JSON shape documented in
+`ARCHITECTURE.md`, whether the source is this React build on any platform
+or the original vanilla-JS SimpleLedger.

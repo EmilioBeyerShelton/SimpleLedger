@@ -32,11 +32,17 @@ portToReact/
     lib/
       utils/ledger.ts       ported js/utils.js: formatting + ledger math
       utils.ts               shadcn's `cn()` classname helper
+      db/
+        schema.ts             SQLite DDL (normalized tables) — canonical for web + iOS
+        mapping.ts             LedgerData <-> flat SQL row shapes, pure transforms
+        types.ts                SqlExecutor — the minimal async SQL interface adapters implement
+        ledgerRepository.ts      createSchema/readLedgerData/writeLedgerData against a SqlExecutor
       persistence/
         types.ts             PersistenceAdapter contract every platform implements
         normalize.ts          ported js/store.js `normalize()`/`defaultData()` — legacy data migration
-        web.ts                Web adapter: localStorage + File System Access API
-        capacitor.ts           iOS adapter: Preferences + Filesystem + Share
+        web.ts                Web adapter: SQLite (sqlite-wasm/OPFS) + File System Access API
+        webSqlite.worker.ts    Dedicated Worker owning the sqlite3/OPFS calls — see "Web" below
+        capacitor.ts           iOS adapter: SQLite (@capacitor-community/sqlite) + Filesystem + Share
         electron.ts             macOS adapter: IPC to the main process (electron/main.cjs)
         electron.d.ts            types for window.electronLedger
         index.ts                 platform detection + adapter factory
@@ -78,7 +84,8 @@ the reason the project exists as `portToReact/` rather than just replacing
 the old files in place.
 
 Every platform implements the same `PersistenceAdapter` interface
-(`src/lib/persistence/types.ts`):
+(`src/lib/persistence/types.ts`) — this contract hasn't changed since the
+SQLite migration:
 
 - `loadInitial()` — read the always-on store, reconcile with a linked file
   if one was remembered, migrate legacy shapes via `normalize()`.
@@ -90,52 +97,148 @@ Every platform implements the same `PersistenceAdapter` interface
 - `downloadBackup(data)` / `uploadBackup(file)` — manual JSON
   export/import, independent of any linked file.
 
+### Why SQLite, and what stays JSON
+
+The **always-on local store** and the **optional linked file** are both
+real SQLite databases now, on every platform — replacing the original
+localStorage/Preferences/JSON-file approach entirely. **Manual backup**
+(the Settings tab's download/share + upload) deliberately stayed JSON: it
+needs to be portable across platforms and app versions, human-readable,
+and diffable, none of which a SQLite file gives you for free. It also
+lets every adapter's restore path keep running through the same
+`normalize()` migration used for pre-SQLite exports. So: SQLite is the
+storage *engine*; JSON is the *interchange format*. Nothing in the UI or
+the Zustand store needs to know the difference — `uploadBackup()` always
+returns a plain object, and the store's `mutate()` writes it through
+`persistLocal()` like any other change.
+
+### Schema (`src/lib/db/schema.ts`)
+
+Normalized tables — `accounts`, `transactions`, `groups`,
+`group_transactions`, `splits`, `settings` — with foreign keys and indexes
+on the columns queries actually filter by (`transactions.from_account`,
+`.to_account`, `.date`; `group_transactions.group_id`, `.transaction_id`).
+Two deliberate simplifications:
+
+- `groups.members` stays a JSON-text column (an array of plain name
+  strings) rather than its own table — members have no attributes beyond
+  their name, so normalizing them would add a join with no query benefit.
+- `splits` *is* its own table, one row per member per
+  `group_transaction` — this is the one place per-row amounts genuinely
+  benefit from normalization.
+
+`settings` is a single-row-per-key table (today just `defaultAccountId`)
+so the shape can grow without a schema migration.
+
+**Writes are full-replace, not incremental.** `writeLedgerData()`
+(`src/lib/db/ledgerRepository.ts`) wipes every table and reinserts from
+the in-memory `LedgerData` object inside one transaction, on every save.
+This mirrors the store's existing `mutate()` pattern, which already
+recomputes the whole `LedgerData` tree per action — so the persistence
+layer never has to diff anything or track per-action SQL. It's the right
+trade-off for personal-finance-scale data (hundreds to low thousands of
+rows). If this app ever needs to scale past that, this is the one place
+to optimize; nothing else would need to change.
+
+**Electron doesn't import this schema directly.** `electron/main.cjs`
+runs in the Node main process, outside Vite's module graph, so it carries
+its own plain-JS copy of the same DDL and mapping logic instead. Both
+copies are commented "KEEP IN SYNC" — if you change the table/column shape
+in `src/lib/db/schema.ts`, make the identical change in `main.cjs`.
+
 ### Web (`web.ts`)
 
-Unchanged behavior from the original `js/store.js`: `localStorage` is the
-always-on store; an optional **File System Access API** handle
-(Chrome/Edge only — feature-detected via `showOpenFilePicker`) is the
-linked file, with the handle itself persisted in IndexedDB since it isn't
-JSON-serializable. Firefox/Safari get `supported: false` and just use
-localStorage, same graceful degradation as before.
+Always-on store: **`@sqlite.org/sqlite-wasm`**, using the OPFS
+**"SAHPool"** VFS. It needs neither `crossOriginIsolated`/COOP+COEP
+headers nor `SharedArrayBuffer`/`Atomics` — unlike sqlite-wasm's *other*
+OPFS VFS — which is the usual reason people reach for SAHPool. It does
+still need a dedicated Worker, though, for a more basic reason:
+`installOpfsSAHPoolVfs()` calls
+`FileSystemFileHandle.prototype.createSyncAccessHandle()`, and browsers
+only expose that synchronous method inside a Worker's global scope, never
+on the main thread — calling it from `window` throws `Missing required
+OPFS APIs.` regardless of which VFS you're installing. So the actual
+sqlite3/OPFS calls live in `webSqlite.worker.ts`, a small dedicated Worker
+Vite builds as its own chunk; `web.ts` talks to it through
+`SqliteWorkerClient`, a minimal `postMessage` request/response RPC keyed
+by an auto-incrementing id. `SqlExecutor`'s `run`/`all`/`transaction`
+methods are thin wrappers over that RPC, so `ledgerRepository.ts` (and
+everything built on `SqlExecutor`) has no idea a Worker is involved.
+
+Trade-off (documented upstream, inherent to SAHPool regardless of which
+thread installs it): a SAHPool VFS claims exclusive access to its OPFS
+pool, so only one browser tab can hold the database open at a time — a
+second tab's pool init will fail until the first tab closes. Fine for a
+personal app; worth knowing if it's ever opened in two tabs at once.
+
+Linked file: unchanged from the original — an optional **File System
+Access API** handle (Chrome/Edge only, feature-detected via
+`showOpenFilePicker`), with the handle itself persisted in IndexedDB since
+it isn't JSON-serializable. What's mirrored to it is now the raw
+`.sqlite3` file's bytes (via the worker's export/import messages), not
+pretty-printed JSON. Firefox/Safari get `supported: false` for linking,
+same graceful degradation as before — the OPFS local store itself needs a
+modern evergreen browser but doesn't depend on File System Access support.
 
 ### iOS (`capacitor.ts`)
 
-iOS has no equivalent of a persistent external-file handle, so the design
-had to change shape rather than being a literal port:
+Always-on store: **`@capacitor-community/sqlite`**, native SQLite managed
+by the plugin under `Library/CapacitorDatabase/` by default — replaces the
+old `@capacitor/preferences`/NSUserDefaults JSON blob.
 
-- **Always-on store**: `@capacitor/preferences` (backed by
-  `NSUserDefaults`) — analogous to localStorage, survives app updates and
-  device backups.
-- **"Linked file"**: instead of linking an arbitrary external file, we
-  mirror every save to `Documents/ledger-data.json` inside the app
-  sandbox. With `UIFileSharingEnabled` set in `Info.plist` (see the iOS
-  setup section below), that file shows up under **Files app → On My
-  iPhone/iPad → SimpleLedger**, so the user can inspect, AirDrop, or back
-  it up through Files like any other document — the closest iOS
-  equivalent to "a file on disk."
-- **Backup**: `downloadBackup` writes a timestamped snapshot to the cache
-  directory and opens the native share sheet (`@capacitor/share`) so the
-  user can save it to Files, AirDrop it, etc.
+"Linked file" keeps the shape it had before the SQLite migration, because
+iOS still has no equivalent of a persistent external-file handle *and* the
+SQLite plugin doesn't expose a raw-bytes export of its native `.db` file:
+linking mirrors a **JSON snapshot** (read from SQLite, written back into
+SQLite on reconnect) to `Documents/ledger-data.json` inside the app
+sandbox. With `UIFileSharingEnabled` set in `Info.plist` (see the iOS
+setup section below), that file shows up under **Files app → On My
+iPhone/iPad → SimpleLedger**. Worth being precise about: this is a JSON
+mirror of the data, not a copy of the `.sqlite3` file itself — the Settings
+copy on this platform says so explicitly ("mirror a JSON snapshot"), so it
+doesn't imply a raw database file that isn't actually there.
+
+- **Backup**: `downloadBackup` writes a timestamped JSON snapshot to the
+  cache directory and opens the native share sheet (`@capacitor/share`) so
+  the user can save it to Files, AirDrop it, etc.
 - **Restore**: a plain `<input type="file">`, which iOS's WKWebView routes
   to the native document picker — no extra plugin needed.
 
 ### macOS (`electron.ts`)
 
 Electron's renderer process is sandboxed (`contextIsolation: true`,
-`nodeIntegration: false`), so it never touches Node's `fs` directly.
-`electron/preload.cjs` exposes a narrow `window.electronLedger` bridge;
-`electron/main.cjs` implements the other end over `ipcMain.handle`:
+`nodeIntegration: false`), so it never touches Node's `fs` or
+`better-sqlite3` directly. `electron/preload.cjs` exposes a narrow
+`window.electronLedger` bridge; `electron/main.cjs` implements the other
+end over `ipcMain.handle`. The IPC wire format stays plain JSON (a
+serialized `LedgerData`) on both `dbRead`/`dbWrite` — **main.cjs is the
+only place that translates JSON to and from SQLite rows on macOS**, which
+is what let `electron.ts` (the renderer-side adapter) change so little:
+it still just calls `bridge().dbRead(path)` / `bridge().dbWrite(path, json)`
+and never touches SQL.
 
-- **Always-on store**: a JSON file in `app.getPath('userData')`
-  (`~/Library/Application Support/SimpleLedger/ledger-data.json`) — the
-  macOS analogue of localStorage.
-- **Linked file**: a second, user-chosen path (native save/open dialogs
-  via `dialog.showOpenDialog`/`showSaveDialog`), mirrored on every save —
-  same UX as the web adapter's File System Access API handle. The chosen
-  path is remembered in the renderer's `localStorage` (which Electron
-  persists fine across launches) rather than in the main process, since
-  it's just a string.
+- **Always-on store**: a SQLite database in `app.getPath('userData')`
+  (`~/Library/Application Support/SimpleLedger/ledger.sqlite3`) — the
+  macOS analogue of the web adapter's OPFS database.
+- **Linked file**: a second, user-chosen `.sqlite3` path (native save/open
+  dialogs via `dialog.showOpenDialog`/`showSaveDialog`), mirrored on every
+  save — same UX as the web adapter's File System Access API handle. The
+  chosen path is remembered in the renderer's `localStorage` (which
+  Electron persists fine across launches) rather than in the main process,
+  since it's just a string.
+- **Manual backup** uses *separate* IPC channels (`writeJsonFile` /
+  `pickSaveJsonFile`) from the ones above, specifically so a backup export
+  never gets routed through the SQLite translation layer — it's a plain
+  `fs.writeFile` of JSON text, matching every other platform's backup
+  format.
+- **Native module**: `better-sqlite3` ships a native (non-WASM) binding,
+  which must be compiled against Electron's exact Node ABI — different
+  from the Node ABI on your system. `@electron/rebuild` handles this; the
+  `postinstall` script runs it automatically (falling back to a console
+  message instead of failing the whole install if it can't — e.g. missing
+  Xcode Command Line Tools — since that would otherwise break plain web
+  development for no reason). Run `npm run rebuild:electron` manually if
+  you ever see native-module errors specifically from the Electron build.
 
 ### Adapter selection (`index.ts`)
 
@@ -161,7 +264,17 @@ button labels/copy (e.g. "Download JSON" vs. "Share backup").
 Every adapter's `loadInitial()`, `connectExisting()`, `reconnect()`, and
 `uploadBackup()` path runs data through `normalize()`, so any export from
 the original vanilla-JS app — or an even older export — loads correctly
-on any platform.
+on any platform, and writes straight into SQLite via `writeLedgerData()`.
+
+One thing `normalize()` does **not** do automatically: migrate a user's
+*existing* pre-SQLite local data (localStorage on web, Preferences on
+iOS, the old `ledger-data.json` on macOS) into the new SQLite store on
+first run after upgrading. That was a deliberate choice — the SQLite
+migration starts every platform with a fresh, empty database. Anyone
+upgrading from a pre-SQLite build should use the old build's "Download
+JSON" backup, then "Upload JSON" on the new build's Settings tab to bring
+their data across; that path already works today via `uploadBackup()` +
+`normalize()`.
 
 ## UI: shadcn/ui + Tailwind
 
