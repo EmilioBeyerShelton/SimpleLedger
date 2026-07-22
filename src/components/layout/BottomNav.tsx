@@ -31,8 +31,17 @@ function BottomNavTab({ tab }: { tab: NavTab }) {
 }
 
 export function BottomNav() {
+  // `fixed`, not `sticky`: `sticky` still participates in the page's own
+  // scroll/rubber-band bounce (it's pinned relative to its scrolling
+  // ancestor, which itself can move during an overscroll bounce on
+  // mobile), so the bar visibly slid up and down with the bounce instead
+  // of staying put. `fixed` anchors to the viewport itself — the same
+  // reason the floating "add expense" button (TransactionsPage.tsx) never
+  // moved. Since this pulls the bar out of the flex layout's document
+  // flow, `App.tsx` adds matching bottom padding to `<main>` so the last
+  // bit of scrollable content isn't hidden underneath it.
   return (
-    <nav className="safe-bottom sticky bottom-0 z-30 border-t bg-background/95 backdrop-blur md:hidden">
+    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur md:hidden">
       <div className="mx-auto flex max-w-3xl justify-between px-1 py-1">
         {NAV_TABS.map(tab => (
           <BottomNavTab key={tab.to} tab={tab} />

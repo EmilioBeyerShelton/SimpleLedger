@@ -38,7 +38,12 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col">
       <TopBar />
-      <main className="no-scrollbar flex-1 overflow-y-auto">
+      {/* pb-20 (+ safe-area) reserves space for BottomNav, which is
+          `fixed` (see its file comment) and so no longer takes up room in
+          this flex layout on its own — without this, content's last few
+          rows would sit underneath it. Not needed at md: and up, where
+          BottomNav hides itself entirely. */}
+      <main className="no-scrollbar flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
         <div className="mx-auto max-w-3xl">
           <Outlet />
         </div>
