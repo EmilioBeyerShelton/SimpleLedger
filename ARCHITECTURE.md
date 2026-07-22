@@ -16,10 +16,11 @@ features, same data shape, three build targets instead of one.
    sankey/pie charts, the legacy-data migration) is a direct port. Look at
    the top-of-file comment in each source file — it names the original
    `js/*.js` file it replaces.
-3. **Mobile-first, works everywhere.** Bottom tab bar on narrow viewports,
-   the same bar becomes a top bar on wide/desktop layouts (`md:` Tailwind
-   variants in `BottomNav`/`App`). `env(safe-area-inset-*)` is respected
-   for iOS notches/home indicators.
+3. **Mobile-first, works everywhere.** Bottom tab bar (`BottomNav`) on
+   narrow viewports; on wide/desktop layouts navigation moves into
+   `TopBar` instead and `BottomNav` hides itself (`md:` Tailwind variants
+   in both — see "UI: shadcn/ui + Tailwind" below). `env(safe-area-inset-*)`
+   is respected for iOS notches/home indicators.
 
 ## Directory layout
 
@@ -50,8 +51,8 @@ portToReact/
     store/
       useLedgerStore.ts      Zustand store — all state + mutations, talks only to PersistenceAdapter
     components/
-      ui/                    shadcn/ui primitives (button, input, dialog, select, ...)
-      layout/                TopBar, BottomNav
+      ui/                    shadcn/ui primitives (button, input, dialog, select, navigation-menu, ...)
+      layout/                TopBar (desktop nav + title), BottomNav (mobile nav), navTabs.ts (shared tab list)
       AccountPicker.tsx, ExpenseForm.tsx, AccountForm.tsx, PieChart.tsx, SankeyChart.tsx
       PhotoPicker.tsx, PhotoCropDialog.tsx    capture -> crop -> compress -> attach (see "Expense photos")
     pages/                  one file per tab: Transactions, Report, Accounts, Budgets, Settings
@@ -383,12 +384,12 @@ inline `groupId`/`splits`, etc.) are still handled correctly.
 ## UI: shadcn/ui + Tailwind
 
 `src/components/ui/*` are hand-vendored shadcn/ui primitives (Button,
-Input, Dialog, Select, Checkbox, Tabs, Slider, Card, Badge, Label) built
-on Radix primitives + `class-variance-authority` + `tailwind-merge`, the
-same pattern the shadcn CLI generates. They're committed to the repo
-(shadcn is a copy-paste library, not an npm dependency) so they can be
-freely edited — see the project rules in `.claude/CLAUDE.md` for the
-convention this implies.
+Input, Dialog, Select, Checkbox, Tabs, Slider, Card, Badge, Label,
+NavigationMenu) built on Radix primitives + `class-variance-authority` +
+`tailwind-merge`, the same pattern the shadcn CLI generates. They're
+committed to the repo (shadcn is a copy-paste library, not an npm
+dependency) so they can be freely edited — see the project rules in
+`.claude/CLAUDE.md` for the convention this implies.
 
 `components.json` at the repo root is the shadcn CLI's config file — it
 points the CLI at `src/components/ui` (via the `@/` alias), the Tailwind
@@ -402,6 +403,77 @@ somewhere to drop *new* ones going forward.
 Theme tokens live in `src/styles/globals.css` as CSS variables
 (`--primary`, `--background`, etc.), matching the original app's warm
 green/cream palette from `index.html`'s inline `<style>`.
+
+### Navigation: `TopBar.tsx` / `BottomNav.tsx`
+
+Both read from the same `NAV_TABS` list (`layout/navTabs.ts`) so the tab
+set can't drift between the two, and both compute "is this tab active"
+the same way: a small per-tab subcomponent (`TopBarTab` /
+`BottomNavTab`) calls react-router's `useMatch({ path: tab.to, end:
+tab.end })` up front and hands the resulting boolean into a plain
+**string** className, via a plain `Link`. Neither uses `NavLink`'s usual
+function-form `className={({ isActive }) => ...}` pattern, even though
+that's the idiomatic react-router shape and would work fine in
+`BottomNav` on its own — they're kept identical across both components on
+purpose, because of a real bug this project shipped and had to track down
+in `TopBar` specifically:
+
+`TopBar`'s links are wrapped in Radix's `<NavigationMenuLink asChild>`.
+`asChild` composes props onto its child via `@radix-ui/react-slot`'s
+`Slot`, which merges `className` props with `[slotClassName,
+childClassName].filter(Boolean).join(' ')` — code that assumes both sides
+are strings. Handed a *function* (`NavLink`'s className form), `.join(' ')`
+calls `.toString()` on it, silently replacing the whole className with the
+function's **source code as text** — which matches no real Tailwind
+class, so the tab never visibly highlighted. `useMatch()` + a plain
+string sidesteps the function-className path entirely. `active={isActive}`
+is also passed to `NavigationMenuLink` so Radix's own
+`aria-current`/`data-active` attributes stay correct for a11y, even
+though the visual styling doesn't depend on them.
+
+`BottomNav` never had this bug — it renders `NavLink` directly, no Radix
+`asChild` wrapper in between — but it uses the identical `useMatch()`
+pattern anyway, so "is this tab active" is computed exactly one way
+across the whole app instead of two subtly different ones that only
+happen to look the same. The takeaway if either component is touched
+again: never hand a `className` **function** to anything that's a child
+of a Radix (or any `@radix-ui/react-slot`-based) `asChild` wrapper —
+compute the string yourself first.
+
+- **`TopBar`** is a 3-column grid (`1fr auto 1fr`), not a two-item
+  `justify-between` row: with just a title on the left and the nav on the
+  right, `justify-between` centers the nav in whatever space is left
+  *after* the title rather than in the header as a whole, so it visibly
+  drifts off-center once the title has any width. The empty third column
+  balances the title's column so the middle (nav) column centers against
+  the full header width. The active tab gets a solid `bg-primary
+  text-primary-foreground` pill (matching `Button`'s default variant) —
+  deliberately not the low-contrast `bg-accent` used for hover, which
+  reads as barely-there against the header background.
+- The title itself renders two responsive `<span>`s rather than one: full
+  "SimpleLedger" by default (mobile, where the nav is hidden so there's no
+  competition for space, and again at `lg:` where there's room for both),
+  abbreviated to "SL" specifically in the squeezed `md:`..`lg:` range
+  where the nav bar and title are on the same row. This is a
+  breakpoint-tier approximation of "abbreviate when there's no room," not
+  a true container-query/measurement-based fit — consistent with the rest
+  of this app's Tailwind-breakpoint-driven responsive design rather than
+  introducing `ResizeObserver`-based logic for one label.
+- **`BottomNav`** is the mobile tab bar (icons + labels, fixed to the
+  bottom via `sticky bottom-0` + the `.safe-bottom` utility) and hides
+  itself entirely at `md:` and up (`md:hidden`) — it doesn't try to
+  reshape into a top bar the way an earlier version of this app did.
+
+That earlier version *did* try to make `BottomNav` become the desktop top
+bar in place, via `md:static md:order-first` plus `App.tsx` wrapping
+everything in `md:flex-col-reverse`. That combination had a real bug,
+worth remembering if a similar trick is ever tempting again: in a
+`flex-col-reverse` container, the main axis's "start" edge — where
+`order-first`'s `order: -9999` pins an item — is the *bottom* of the
+screen, not the top. So instead of floating to the top on desktop as
+intended, the nav bar stayed pinned to the bottom. `App.tsx` is back to a
+plain `flex-col` now that `TopBar` owns desktop navigation outright, so
+there's no reordering trick left to get wrong.
 
 ## Routing
 

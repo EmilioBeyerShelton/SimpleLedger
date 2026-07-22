@@ -1,6 +1,15 @@
 // Root shell — replaces the original js/app.js. Boots the store (which
 // selects and initializes the right persistence adapter for the current
 // platform), then renders TopBar + the routed page + BottomNav.
+//
+// Plain `flex-col` here, deliberately not `md:flex-col-reverse` (which an
+// earlier version of this file used to make BottomNav *look* like it sat
+// at the top on desktop): in a column-reverse container, the main axis's
+// "start" edge — where `order-first` items get pinned — is the *bottom*
+// of the screen, not the top. That combination was why the nav bar
+// rendered at the bottom on desktop instead of the top. TopBar now owns
+// desktop navigation outright (see TopBar.tsx) and BottomNav hides itself
+// on desktop instead, so there's no ordering trick to get right here.
 import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Toaster } from 'sonner';
@@ -11,7 +20,6 @@ import { BottomNav } from '@/components/layout/BottomNav';
 export default function App() {
   const loading = useLedgerStore(s => s.loading);
   const data = useLedgerStore(s => s.data);
-  const fileStatus = useLedgerStore(s => s.fileStatus);
   const init = useLedgerStore(s => s.init);
 
   useEffect(() => {
@@ -28,8 +36,8 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen flex-col md:flex-col-reverse">
-      <TopBar fileStatus={fileStatus} />
+    <div className="flex h-screen flex-col">
+      <TopBar />
       <main className="no-scrollbar flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl">
           <Outlet />
