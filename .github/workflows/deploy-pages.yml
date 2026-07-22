@@ -1,0 +1,74 @@
+name: Deploy web build to GitHub Pages
+
+# Builds the Vite/React web target (see README.md "Web") and publishes
+# dist/ to GitHub Pages. Only the web build runs here — the iOS
+# (Capacitor) and macOS (Electron) shells aren't part of what gets served
+# from Pages, so this workflow doesn't touch `ios/`, `npx cap sync`, or
+# electron-builder at all.
+on:
+  push:
+    branches: [Prod]
+  # Lets you re-run a deploy from the Actions tab without needing a new
+  # commit on Prod.
+  workflow_dispatch:
+
+# Only one deploy should ever be in flight; a newer push should win over
+# an in-progress older one rather than queueing behind it.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # This repo's lockfile is bun.lock (see local dev instructions), so
+      # CI installs with bun too rather than mixing package managers.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # postinstall tries to rebuild better-sqlite3 against Electron's ABI
+      # (see package.json/README.md) — that's only needed for the Electron
+      # build, so it's written to fail non-fatally everywhere else,
+      # including here. `--frozen-lockfile` fails the build instead of
+      # silently drifting if bun.lock and package.json ever fall out of
+      # sync.
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # tsc --noEmit, then the actual Vite build into dist/ (see
+      # package.json's "build" script).
+      - name: Build
+        run: bun run build
+
+      # Belt-and-suspenders: Vite doesn't emit any `_`-prefixed paths
+      # today, but this keeps Pages' Jekyll processing out of the way
+      # regardless, in case that ever changes.
+      - name: Disable Jekyll processing
+        run: touch dist/.nojekyll
+
+      - name: Upload build artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
