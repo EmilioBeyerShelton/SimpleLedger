@@ -110,7 +110,7 @@
       "id": 1,
       "date": "2026-05-01",
       "title": "Salary",
-      "amount": 2800.0,
+      "amount": 2800,
       "from": "income.salary",
       "to": "assets.bank_accounts.checkings"
     },
@@ -118,7 +118,7 @@
       "id": 2,
       "date": "2026-05-02",
       "title": "Rent",
-      "amount": 950.0,
+      "amount": 950,
       "from": "assets.bank_accounts.checkings",
       "to": "expenses.housing.rent"
     },
@@ -222,7 +222,7 @@
       "id": 15,
       "date": "2026-05-22",
       "title": "Headphones",
-      "amount": 129.0,
+      "amount": 129,
       "from": "liabilities.credit_card",
       "to": "expenses.shopping.electronics"
     },
@@ -230,7 +230,7 @@
       "id": 16,
       "date": "2026-05-25",
       "title": "Movie night",
-      "amount": 24.0,
+      "amount": 24,
       "from": "assets.cash",
       "to": "expenses.entertainment.movies"
     },
@@ -238,7 +238,7 @@
       "id": 17,
       "date": "2026-05-28",
       "title": "Credit card payment",
-      "amount": 280.0,
+      "amount": 280,
       "from": "assets.bank_accounts.checkings",
       "to": "liabilities.credit_card"
     },
@@ -246,7 +246,7 @@
       "id": 18,
       "date": "2026-05-30",
       "title": "Transfer to savings",
-      "amount": 300.0,
+      "amount": 300,
       "from": "assets.bank_accounts.checkings",
       "to": "assets.bank_accounts.savings"
     },
@@ -254,7 +254,7 @@
       "id": 19,
       "date": "2026-06-01",
       "title": "Salary",
-      "amount": 2800.0,
+      "amount": 2800,
       "from": "income.salary",
       "to": "assets.bank_accounts.checkings"
     },
@@ -262,7 +262,7 @@
       "id": 20,
       "date": "2026-06-02",
       "title": "Rent",
-      "amount": 950.0,
+      "amount": 950,
       "from": "assets.bank_accounts.checkings",
       "to": "expenses.housing.rent"
     },
@@ -302,7 +302,7 @@
       "id": 25,
       "date": "2026-06-10",
       "title": "Flight to Lisbon",
-      "amount": 210.0,
+      "amount": 210,
       "from": "liabilities.credit_card",
       "to": "expenses.travel.flights"
     },
@@ -310,7 +310,7 @@
       "id": 26,
       "date": "2026-06-11",
       "title": "Hotel Lisbon",
-      "amount": 340.0,
+      "amount": 340,
       "from": "liabilities.credit_card",
       "to": "expenses.travel.lodging"
     },
@@ -318,7 +318,7 @@
       "id": 27,
       "date": "2026-06-12",
       "title": "Dinner Lisbon",
-      "amount": 68.0,
+      "amount": 68,
       "from": "assets.cash",
       "to": "expenses.travel.food"
     },
@@ -326,7 +326,7 @@
       "id": 28,
       "date": "2026-06-15",
       "title": "Freelance payment",
-      "amount": 450.0,
+      "amount": 450,
       "from": "income.freelance",
       "to": "assets.bank_accounts.checkings"
     },
@@ -358,7 +358,7 @@
       "id": 32,
       "date": "2026-06-28",
       "title": "Credit card payment",
-      "amount": 610.0,
+      "amount": 610,
       "from": "assets.bank_accounts.checkings",
       "to": "liabilities.credit_card"
     },
@@ -366,15 +366,15 @@
       "id": 33,
       "date": "2026-07-01",
       "title": "Salary",
-      "amount": 2800.0,
+      "amount": 2800,
       "from": "income.salary",
       "to": "assets.bank_accounts.checkings"
     },
     {
       "id": 34,
-      "date": "2026-07-02",
+      "date": "2026-07-01",
       "title": "Rent",
-      "amount": 950.0,
+      "amount": 950,
       "from": "assets.bank_accounts.checkings",
       "to": "expenses.housing.rent"
     },
@@ -398,7 +398,7 @@
       "id": 37,
       "date": "2026-07-08",
       "title": "Electricity bill",
-      "amount": 79.0,
+      "amount": 79,
       "from": "assets.bank_accounts.checkings",
       "to": "expenses.utilities.electricity"
     },
@@ -414,7 +414,7 @@
       "id": 39,
       "date": "2026-07-12",
       "title": "Bike repair",
-      "amount": 45.0,
+      "amount": 45,
       "from": "assets.cash",
       "to": "expenses.transport.maintenance"
     },
@@ -430,7 +430,7 @@
       "id": 41,
       "date": "2026-07-18",
       "title": "Transfer to savings",
-      "amount": 250.0,
+      "amount": 250,
       "from": "assets.bank_accounts.checkings",
       "to": "assets.bank_accounts.savings"
     },
@@ -452,7 +452,7 @@
         "Sam",
         "Jo"
       ],
-      "budget": 400.0
+      "budget": 400
     },
     {
       "id": 2,
@@ -586,11 +586,11 @@
       "splits": [
         {
           "member": "Mia",
-          "amount": 105.0
+          "amount": 105
         },
         {
           "member": "Noah",
-          "amount": 105.0
+          "amount": 105
         }
       ]
     },
@@ -601,11 +601,11 @@
       "splits": [
         {
           "member": "Mia",
-          "amount": 170.0
+          "amount": 170
         },
         {
           "member": "Noah",
-          "amount": 170.0
+          "amount": 170
         }
       ]
     },
@@ -616,11 +616,11 @@
       "splits": [
         {
           "member": "Mia",
-          "amount": 34.0
+          "amount": 34
         },
         {
           "member": "Noah",
-          "amount": 34.0
+          "amount": 34
         }
       ]
     },

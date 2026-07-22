@@ -1,0 +1,8 @@
+node_modules
+dist
+dist-electron
+ios/App/App/public
+ios/App/Pods
+ios/App/App.xcworkspace
+.DS_Store
+*.log

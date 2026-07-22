@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 30% 98%;
+    --foreground: 150 15% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 150 15% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 150 15% 12%;
+    --primary: 160 32% 26%;
+    --primary-foreground: 40 30% 98%;
+    --secondary: 40 20% 93%;
+    --secondary-foreground: 150 15% 12%;
+    --muted: 40 20% 93%;
+    --muted-foreground: 150 8% 40%;
+    --accent: 40 20% 93%;
+    --accent-foreground: 150 15% 12%;
+    --destructive: 6 65% 45%;
+    --destructive-foreground: 40 30% 98%;
+    --border: 40 15% 87%;
+    --input: 40 15% 87%;
+    --ring: 160 32% 26%;
+    --radius: 0.6rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    /* Respect the iOS notch / home indicator in both Capacitor and Safari PWA contexts. */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
