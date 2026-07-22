@@ -404,6 +404,43 @@ Theme tokens live in `src/styles/globals.css` as CSS variables
 (`--primary`, `--background`, etc.), matching the original app's warm
 green/cream palette from `index.html`'s inline `<style>`.
 
+### `Dialog` on mobile: top-anchored + drag-to-dismiss
+
+`DialogContent` (`ui/dialog.tsx`) behaves differently by breakpoint, and
+this applies to every dialog in the app (add/edit expense, filters, photo
+preview/crop, etc.) since they all go through this one shared component:
+
+- **Mobile** (below `md:`): anchored near the top of the screen
+  (`top-[max(1rem,env(safe-area-inset-top))]`, respecting the notch).
+  Pulling down from *anywhere* in the dialog past
+  `DRAG_DISMISS_THRESHOLD_PX` (200px) dismisses it, by programmatically
+  clicking the same `DialogPrimitive.Close` button the visible "X" uses —
+  going through a real click rather than reaching into Radix's internal
+  open-state context directly, so it stays a supported interaction even if
+  Radix's internals change. Releasing short of the threshold animates back
+  via the class's own `transition-transform`; the drag itself sets
+  `transition: none` inline while active so the dialog tracks the finger
+  1:1 with no lag. Two guards keep this from fighting normal interaction
+  with the dialog's contents, both checked at `pointerdown`:
+  - `isInteractiveTarget()` skips arming the drag if the touch started on
+    a button/link/input/textarea/select/`role="button"`/editable element,
+    so taps and text editing inside the dialog work unimpeeded.
+  - The drag only arms when `contentRef.current.scrollTop` is already
+    `0` — on a dialog tall enough to scroll internally
+    (`overflow-y-auto`), the first part of a downward drag scrolls the
+    content back up like normal; only once already at the top does
+    further pulling drag the dialog itself. `overscroll-y-contain` is set
+    alongside this so iOS's own elastic bounce at that scroll boundary
+    doesn't visually fight the JS-driven drag.
+- **Desktop** (`md:` and up): unchanged — centered via `top-1/2
+  -translate-y-1/2`, and `isDesktopViewport()` bails out of the pointer
+  handlers entirely so there's no drag behavior to speak of.
+
+`isDesktopViewport()` checks `window.matchMedia('(min-width: 768px)')`
+(Tailwind's default `md`) at drag-start time rather than tracking resize
+continuously, since a dialog's presentation mode within a single
+open/close cycle doesn't realistically change mid-gesture.
+
 ### Navigation: `TopBar.tsx` / `BottomNav.tsx`
 
 Both read from the same `NAV_TABS` list (`layout/navTabs.ts`) so the tab

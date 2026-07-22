@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useLedgerStore } from '@/store/useLedgerStore';
 import { accountName, dateBucket, formatAmount, formatDayLabel, groupName } from '@/lib/utils/ledger';
 import { AccountPicker } from '@/components/AccountPicker';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ExpenseForm, type ExpenseFormInitial } from '@/components/ExpenseForm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,7 @@ export default function TransactionsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ id: number; title: string } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -168,8 +170,13 @@ export default function TransactionsPage() {
         <Plus className="h-6 w-6" />
       </Button>
 
+      {/* onOpenAutoFocus is suppressed here (but not on the "Add expense"
+          dialog below): this dialog doubles as a read-only detail view of
+          an existing expense, so auto-focusing/auto-selecting the Title
+          field's text the instant it opens doesn't make sense the way it
+          does for a blank "new expense" form. */}
       <Dialog open={!!editing} onOpenChange={open => !open && setEditingId(null)}>
-        <DialogContent>
+        <DialogContent onOpenAutoFocus={e => e.preventDefault()}>
           <DialogHeader><DialogTitle>Edit expense</DialogTitle></DialogHeader>
           {editingInitial && (
             <ExpenseForm
@@ -179,16 +186,26 @@ export default function TransactionsPage() {
               onSave={patch => { updateTransaction(editingInitial.id, patch); setEditingId(null); toast('Expense updated.'); }}
               onCancel={() => setEditingId(null)}
               onDelete={() => {
-                if (confirm(`Delete "${editingInitial.title}"? This cannot be undone.`)) {
-                  deleteTransaction(editingInitial.id);
-                  setEditingId(null);
-                  toast('Expense deleted.');
-                }
+                setEditingId(null);
+                setPendingDelete({ id: editingInitial.id, title: editingInitial.title });
               }}
             />
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={open => !open && setPendingDelete(null)}
+        title={pendingDelete ? `Delete "${pendingDelete.title}"?` : 'Delete expense?'}
+        description="This cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          deleteTransaction(pendingDelete.id);
+          toast('Expense deleted.');
+        }}
+      />
 
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent>
