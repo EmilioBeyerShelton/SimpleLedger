@@ -173,6 +173,15 @@ same pattern the shadcn CLI generates. They're committed to the repo
 freely edited — see the project rules in `.claude/CLAUDE.md` for the
 convention this implies.
 
+`components.json` at the repo root is the shadcn CLI's config file — it
+points the CLI at `src/components/ui` (via the `@/` alias), the Tailwind
+config, and `src/styles/globals.css` for the theme's CSS variables, so
+`npx shadcn@latest add <component>` works to pull in additional
+primitives without hand-writing them. The existing components above
+weren't generated through the CLI (they were written by hand to the same
+shape); `components.json` was added afterward purely so the CLI has
+somewhere to drop *new* ones going forward.
+
 Theme tokens live in `src/styles/globals.css` as CSS variables
 (`--primary`, `--background`, etc.), matching the original app's warm
 green/cream palette from `index.html`'s inline `<style>`.
