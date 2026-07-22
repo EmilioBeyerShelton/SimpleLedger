@@ -16,6 +16,7 @@ import { Toaster } from 'sonner';
 import { useLedgerStore } from '@/store/useLedgerStore';
 import { TopBar } from '@/components/layout/TopBar';
 import { BottomNav } from '@/components/layout/BottomNav';
+import { DataOnboardingPrompts } from '@/components/DataOnboardingPrompts';
 
 export default function App() {
   const loading = useLedgerStore(s => s.loading);
@@ -49,6 +50,7 @@ export default function App() {
         </div>
       </main>
       <BottomNav />
+      <DataOnboardingPrompts />
       <Toaster position="top-center" richColors />
     </div>
   );

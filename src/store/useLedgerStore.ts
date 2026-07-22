@@ -13,6 +13,7 @@ import { nextId } from '@/lib/utils/ledger';
 import { getPersistenceAdapter } from '@/lib/persistence';
 import type { PersistenceAdapter, FileLinkStatus } from '@/lib/persistence/types';
 import { normalize, defaultData } from '@/lib/persistence/normalize';
+import { generateDemoData } from '@/lib/utils/demoData';
 
 interface LedgerState {
   data: LedgerData | null;
@@ -37,6 +38,11 @@ interface LedgerState {
   deleteGroup: (id: number) => void;
 
   setDefaultAccount: (id: string | null) => void;
+
+  loadDemoData: () => void;
+  clearData: () => void;
+  dismissWelcome: () => void;
+  keepDemoData: () => void;
 
   connectExisting: () => Promise<void>;
   connectNew: () => Promise<void>;
@@ -190,6 +196,24 @@ export const useLedgerStore = create<LedgerState>((set, get) => ({
 
   setDefaultAccount: id => {
     get().mutate(d => ({ ...d, settings: { ...d.settings, defaultAccountId: id } }));
+  },
+
+  loadDemoData: () => {
+    get().mutate(() => normalize(generateDemoData()));
+  },
+
+  clearData: () => {
+    // Reset to defaults, but a reset shouldn't resurface the first-visit
+    // welcome prompt for a user who's already seen it.
+    get().mutate(d => ({ ...defaultData(), settings: { ...defaultData().settings, hasSeenWelcome: d.settings.hasSeenWelcome ?? false } }));
+  },
+
+  dismissWelcome: () => {
+    get().mutate(d => ({ ...d, settings: { ...d.settings, hasSeenWelcome: true } }));
+  },
+
+  keepDemoData: () => {
+    get().mutate(d => ({ ...d, settings: { ...d.settings, isDemoData: false } }));
   },
 
   connectExisting: async () => {

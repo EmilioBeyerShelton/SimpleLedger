@@ -132,8 +132,14 @@ Two deliberate simplifications:
   `group_transaction` — this is the one place per-row amounts genuinely
   benefit from normalization.
 
-`settings` is a single-row-per-key table (today just `defaultAccountId`)
-so the shape can grow without a schema migration.
+`settings` is a single-row-per-key table (`defaultAccountId`,
+`hasSeenWelcome`, `isDemoData` today) so the shape can grow without a
+schema migration. `hasSeenWelcome` and `isDemoData` back the first-visit
+"try demo data?" prompt and the "still using the demo data — keep or
+delete?" prompt (`src/components/DataOnboardingPrompts.tsx`) — both live
+in `LedgerData.settings` rather than `localStorage`/component state so
+they behave identically across reloads and every platform, and survive
+manual backup/restore the same way the rest of the data does.
 
 `transactions.photo` is a nullable TEXT column holding an optional receipt
 photo as a `data:image/jpeg;base64,...` data URL — a BLOB would be more

@@ -168,8 +168,16 @@ function readLedgerDataFromDb(filePath) {
       id: r.id, groupId: r.group_id, transactionId: r.transaction_id, splits: splitsByGt.get(r.id) || []
     }));
     const settingRows = db.prepare('SELECT key, value FROM settings').all();
-    const defaultAccountRow = settingRows.find(r => r.key === 'defaultAccountId');
-    const settings = { defaultAccountId: defaultAccountRow ? defaultAccountRow.value : null };
+    const settingsByKey = new Map(settingRows.map(r => [r.key, r.value]));
+    // A missing `hasSeenWelcome` row means this database predates the
+    // welcome-prompt feature (existing content), not a fresh install —
+    // default to true so upgrading users don't get the prompt resurfaced.
+    // Mirrors src/lib/db/mapping.ts's rowsToSettings — keep both in sync.
+    const settings = {
+      defaultAccountId: settingsByKey.has('defaultAccountId') ? settingsByKey.get('defaultAccountId') : null,
+      hasSeenWelcome: settingsByKey.has('hasSeenWelcome') ? settingsByKey.get('hasSeenWelcome') === '1' : true,
+      isDemoData: settingsByKey.get('isDemoData') === '1'
+    };
 
     return { accounts, transactions, groups, groupTransactions, settings };
   } finally {
@@ -199,6 +207,8 @@ function writeLedgerDataToDb(filePath, data) {
         (gt.splits || []).forEach(s => insertSplit.run(gt.id, s.member, s.amount));
       });
       insertSetting.run('defaultAccountId', (d.settings && d.settings.defaultAccountId) ?? null);
+      insertSetting.run('hasSeenWelcome', d.settings && d.settings.hasSeenWelcome ? '1' : '0');
+      insertSetting.run('isDemoData', d.settings && d.settings.isDemoData ? '1' : '0');
     });
     runFullReplace(data);
   } finally {
