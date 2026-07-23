@@ -53,8 +53,9 @@ portToReact/
     components/
       ui/                    shadcn/ui primitives (button, input, dialog, select, navigation-menu, ...)
       layout/                TopBar (desktop nav + title), BottomNav (mobile nav), navTabs.ts (shared tab list)
-      AccountPicker.tsx, ExpenseForm.tsx, AccountForm.tsx, PieChart.tsx, SankeyChart.tsx
+      AccountPicker.tsx, TransactionForm.tsx, AccountForm.tsx, PieChart.tsx, SankeyChart.tsx
       PhotoPicker.tsx, PhotoCropDialog.tsx    capture -> crop -> compress -> attach (see "Expense photos")
+      ZoomableImage.tsx                        pinch/drag/wheel zoom for the photo preview dialog
     pages/                  one file per tab: Transactions, Report, Accounts, Budgets, Settings
     App.tsx                 shell: boots the store, renders TopBar/Outlet/BottomNav
     routes.tsx              react-router route table (HashRouter)
@@ -180,7 +181,7 @@ in `src/lib/db/schema.ts`, make the identical change in `main.cjs`.
 
 ### Expense photos (`PhotoPicker.tsx`, `PhotoCropDialog.tsx`, `lib/utils/image.ts`)
 
-`ExpenseForm` has an optional photo field, backed by `PhotoPicker.tsx` and
+`TransactionForm` has an optional photo field, backed by `PhotoPicker.tsx` and
 `@capacitor/camera`. Flow: **capture → crop → compress → attach.**
 
 **Capture** is a single "Add photo" button, not separate "Take
@@ -227,7 +228,15 @@ a per-platform split.
 **Display**: once attached, the photo renders as a small thumbnail with a
 compact "×" button overlaid on its top-left corner to remove it (rather
 than a separate "Remove photo" button next to it). Tapping the thumbnail
-itself opens a `Dialog` with a larger, uncropped-by-the-dialog preview.
+opens a `Dialog` with a larger preview, rendered through
+`ZoomableImage.tsx` — pinch-zoom, double-click/double-tap to toggle zoom,
+mouse-wheel zoom, and drag-to-pan once zoomed, all built directly on
+Pointer Events (no pan-and-zoom dependency, same approach as
+`ui/dialog.tsx`'s own drag-to-dismiss gesture). Its pointer handlers call
+`stopPropagation()` deliberately — without that, gestures inside it would
+also bubble up to the surrounding `DialogContent`'s drag-to-dismiss
+handler, which has no way to know a plain `<div>` wants to own the
+gesture itself, and the two would fight over the same pointer.
 
 ### Web (`web.ts`)
 

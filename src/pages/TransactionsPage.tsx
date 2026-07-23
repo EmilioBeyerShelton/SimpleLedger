@@ -5,7 +5,7 @@ import { useLedgerStore } from '@/store/useLedgerStore';
 import { accountName, dateBucket, formatAmount, formatDayLabel, groupName } from '@/lib/utils/ledger';
 import { AccountPicker } from '@/components/AccountPicker';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { ExpenseForm, type ExpenseFormInitial } from '@/components/ExpenseForm';
+import { TransactionForm, type TransactionFormInitial } from '@/components/TransactionForm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -101,7 +101,7 @@ export default function TransactionsPage() {
 
   const editing = editingId != null ? data.transactions.find(t => t.id === editingId) : null;
   const editingLink = editing ? linkByTxId.get(editing.id) : null;
-  const editingInitial: ExpenseFormInitial | null = editing
+  const editingInitial: TransactionFormInitial | null = editing
     ? { ...editing, groupId: editingLink ? editingLink.groupId : null, splits: editingLink ? editingLink.splits : null }
     : null;
 
@@ -179,7 +179,7 @@ export default function TransactionsPage() {
         <DialogContent onOpenAutoFocus={e => e.preventDefault()}>
           <DialogHeader><DialogTitle>Edit expense</DialogTitle></DialogHeader>
           {editingInitial && (
-            <ExpenseForm
+            <TransactionForm
               accounts={data.accounts}
               groups={data.groups}
               initial={editingInitial}
@@ -210,7 +210,7 @@ export default function TransactionsPage() {
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent>
           <DialogHeader><DialogTitle>Add expense</DialogTitle></DialogHeader>
-          <ExpenseForm
+          <TransactionForm
             accounts={data.accounts}
             groups={data.groups}
             settings={data.settings}

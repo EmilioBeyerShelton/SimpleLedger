@@ -1,8 +1,9 @@
-// Port of js/components/ExpenseForm.js — the add/edit expense form, shared
-// by the Transactions page's "Add" dialog and its row-edit dialog.
-import { useEffect, useState } from 'react';
+// Port of js/components/ExpenseForm.js (renamed from this project's own
+// earlier ExpenseForm.tsx) — the add/edit transaction form, shared by the
+// Transactions page's "Add" dialog and its row-edit dialog.
+import { useEffect, useRef, useState } from 'react';
 import type { Account, Group, Settings, Transaction, TransactionFormPayload } from '@/types/ledger';
-import { todayStr, splitEqually } from '@/lib/utils/ledger';
+import { todayStr, formatDate, splitEqually } from '@/lib/utils/ledger';
 import { AccountPicker } from '@/components/AccountPicker';
 import { PhotoPicker } from '@/components/PhotoPicker';
 import { Input } from '@/components/ui/input';
@@ -10,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from 'lucide-react';
 
 const FALLBACK_FROM_ID = 'assets.bank_accounts.checkings';
 const FALLBACK_TO_ID = 'expenses';
@@ -19,22 +21,22 @@ function defaultAccountId(accounts: Account[], preferredId: string, fallbackInde
   return accounts[fallbackIndex]?.id ?? accounts[0]?.id ?? null;
 }
 
-export interface ExpenseFormInitial extends Transaction {
+export interface TransactionFormInitial extends Transaction {
   groupId: number | null;
   splits: { member: string; amount: number }[] | null;
 }
 
-interface ExpenseFormProps {
+interface TransactionFormProps {
   accounts: Account[];
   groups: Group[];
   settings?: Settings;
-  initial?: ExpenseFormInitial | null;
+  initial?: TransactionFormInitial | null;
   onSave: (payload: TransactionFormPayload) => void;
   onCancel?: () => void;
   onDelete?: () => void;
 }
 
-export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCancel, onDelete }: ExpenseFormProps) {
+export function TransactionForm({ accounts, groups, settings, initial, onSave, onCancel, onDelete }: TransactionFormProps) {
   const isEdit = !!initial;
   const preferredFromId = settings?.defaultAccountId || FALLBACK_FROM_ID;
 
@@ -46,8 +48,13 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
   const [groupId, setGroupId] = useState<string>(initial && initial.groupId ? String(initial.groupId) : '');
   const [photo, setPhoto] = useState<string | null>(initial?.photo ?? null);
   const [splitRows, setSplitRows] = useState<{ member: string; included: boolean; amount: number }[]>([]);
-  const [showMore, setShowMore] = useState(isEdit);
+  // Only the budget-split section lives behind "more options" now that
+  // date/accounts are always visible — default it open only when editing
+  // a transaction that's already linked to a budget, so that link is
+  // visible without an extra click; otherwise stay collapsed.
+  const [showMore, setShowMore] = useState(!!(initial && initial.groupId));
   const [error, setError] = useState('');
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!groupId) { setSplitRows([]); return; }
@@ -89,6 +96,25 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
     setSplitRows(rows => rows.map(r => (r.included ? { ...r, amount: shareMap[r.member] ?? 0 } : r)));
   }
 
+  function openDatePicker() {
+    const input = dateInputRef.current;
+    if (!input) return;
+    // `showPicker()` is the purpose-built API for this; fall back to
+    // `.click()` (still opens the native picker in most browsers when
+    // called from within a real click handler) for the few that don't
+    // support it yet.
+    if ('showPicker' in input && typeof input.showPicker === 'function') {
+      try {
+        input.showPicker();
+        return;
+      } catch {
+        // showPicker() throws if the input isn't connected/visible enough
+        // in some browsers — fall through to the .click() fallback.
+      }
+    }
+    input.click();
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -127,6 +153,39 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
 
   return (
     <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+      {/* Date reads like a heading, not a form field: subtle text (not an
+          input box) with a calendar icon, but it's still the real date
+          <input> underneath — clicking it opens the native date picker via
+          openDatePicker() rather than requiring a visible bordered field. */}
+      <button
+        type="button"
+        onClick={openDatePicker}
+        className="-mb-1 flex w-fit items-center gap-1.5 self-center text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <Calendar className="h-4 w-4" />
+        {formatDate(date) || 'Set date'}
+        <input
+          ref={dateInputRef}
+          type="date"
+          value={date}
+          onChange={e => setDate(e.target.value)}
+          className="h-0 w-0 opacity-0"
+          tabIndex={-1}
+          aria-label="Date"
+        />
+      </button>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="f-from">From account</Label>
+          <AccountPicker inputId="f-from" accounts={accounts} value={from} onChange={setFrom} placeholder="Type or pick an account" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="f-to">To account</Label>
+          <AccountPicker inputId="f-to" accounts={accounts} value={to} onChange={setTo} placeholder="Type or pick an account" />
+        </div>
+      </div>
+
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="f-title">Title</Label>
         <Input id="f-title" placeholder="e.g. Groceries" value={title} onChange={e => setTitle(e.target.value)} />
@@ -143,37 +202,20 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
       </div>
 
       <Button type="button" variant="ghost" size="sm" className="justify-start px-0" onClick={() => setShowMore(s => !s)}>
-        {showMore ? '– Fewer options' : '+ Date, accounts, split with a budget'}
+        {showMore ? '– Fewer options' : '+ Split with a budget'}
       </Button>
 
       {showMore && (
         <div className="flex flex-col gap-4 rounded-md border p-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="f-date">Date</Label>
-              <Input id="f-date" type="date" value={date} onChange={e => setDate(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="f-group">Split with budget</Label>
-              <Select value={groupId || '__none'} onValueChange={v => setGroupId(v === '__none' ? '' : v)}>
-                <SelectTrigger id="f-group"><SelectValue placeholder="No split" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">No split</SelectItem>
-                  {groups.map(g => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="f-from">From account</Label>
-              <AccountPicker inputId="f-from" accounts={accounts} value={from} onChange={setFrom} placeholder="Type or pick an account" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="f-to">To account</Label>
-              <AccountPicker inputId="f-to" accounts={accounts} value={to} onChange={setTo} placeholder="Type or pick an account" />
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="f-group">Split with budget</Label>
+            <Select value={groupId || '__none'} onValueChange={v => setGroupId(v === '__none' ? '' : v)}>
+              <SelectTrigger id="f-group"><SelectValue placeholder="No split" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">No split</SelectItem>
+                {groups.map(g => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
 
           {selectedGroup && (

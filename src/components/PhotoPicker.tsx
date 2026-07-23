@@ -20,6 +20,7 @@ import { useRef, useState } from 'react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { compressImage } from '@/lib/utils/image';
 import { PhotoCropDialog } from '@/components/PhotoCropDialog';
+import { ZoomableImage } from '@/components/ZoomableImage';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Camera as CameraIcon, X } from 'lucide-react';
@@ -113,7 +114,7 @@ export function PhotoPicker({ value, onChange }: PhotoPickerProps) {
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Receipt photo</DialogTitle></DialogHeader>
-          {value && <img src={value} alt="Expense receipt" className="max-h-[70vh] w-full rounded-md object-contain" />}
+          {value && <ZoomableImage src={value} alt="Expense receipt" className="h-[70vh] w-full rounded-md bg-muted" />}
         </DialogContent>
       </Dialog>
     </>
