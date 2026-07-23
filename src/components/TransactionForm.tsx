@@ -1,9 +1,10 @@
 // Port of js/components/ExpenseForm.js (renamed from this project's own
 // earlier ExpenseForm.tsx) — the add/edit transaction form, shared by the
 // Transactions page's "Add" dialog and its row-edit dialog.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Account, Group, Settings, Transaction, TransactionFormPayload } from '@/types/ledger';
-import { todayStr, formatDate, splitEqually } from '@/lib/utils/ledger';
+import { todayStr, formatDate, splitEqually, accountName } from '@/lib/utils/ledger';
+import { buildTitleAccountModel, suggestToAccount, rankToAccounts } from '@/lib/utils/classifyAccount';
 import { AccountPicker } from '@/components/AccountPicker';
 import { PhotoPicker } from '@/components/PhotoPicker';
 import { Input } from '@/components/ui/input';
@@ -14,7 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar } from 'lucide-react';
 
 const FALLBACK_FROM_ID = 'assets.bank_accounts.checkings';
-const FALLBACK_TO_ID = 'expenses';
 
 function defaultAccountId(accounts: Account[], preferredId: string, fallbackIndex: number): string | null {
   if (accounts.some(a => a.id === preferredId)) return preferredId;
@@ -30,13 +30,17 @@ interface TransactionFormProps {
   accounts: Account[];
   groups: Group[];
   settings?: Settings;
+  /** Transaction history used to auto-suggest the "to" account from the
+   * title as the user types (see lib/utils/classifyAccount.ts). Optional —
+   * omit it (or pass []) to disable suggestions entirely. */
+  transactions?: Transaction[];
   initial?: TransactionFormInitial | null;
   onSave: (payload: TransactionFormPayload) => void;
   onCancel?: () => void;
   onDelete?: () => void;
 }
 
-export function TransactionForm({ accounts, groups, settings, initial, onSave, onCancel, onDelete }: TransactionFormProps) {
+export function TransactionForm({ accounts, groups, settings, transactions, initial, onSave, onCancel, onDelete }: TransactionFormProps) {
   const isEdit = !!initial;
   const preferredFromId = settings?.defaultAccountId || FALLBACK_FROM_ID;
 
@@ -44,7 +48,12 @@ export function TransactionForm({ accounts, groups, settings, initial, onSave, o
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
   const [date, setDate] = useState(initial ? initial.date : todayStr());
   const [from, setFrom] = useState<string | null>(initial ? initial.from : defaultAccountId(accounts, preferredFromId, 0));
-  const [to, setTo] = useState<string | null>(initial ? initial.to : defaultAccountId(accounts, FALLBACK_TO_ID, accounts.length > 1 ? 1 : 0));
+  // No default "to" account — unlike "from" (which defaults to the
+  // configured default account), "to" starts empty so it's either filled
+  // in by the title-classifier suggestion below or chosen explicitly by
+  // the user; it shouldn't silently default to "expenses" or whatever
+  // account happens to be second in the list.
+  const [to, setTo] = useState<string | null>(initial ? initial.to : null);
   const [groupId, setGroupId] = useState<string>(initial && initial.groupId ? String(initial.groupId) : '');
   const [photo, setPhoto] = useState<string | null>(initial?.photo ?? null);
   const [splitRows, setSplitRows] = useState<{ member: string; included: boolean; amount: number }[]>([]);
@@ -55,6 +64,37 @@ export function TransactionForm({ accounts, groups, settings, initial, onSave, o
   const [showMore, setShowMore] = useState(!!(initial && initial.groupId));
   const [error, setError] = useState('');
   const dateInputRef = useRef<HTMLInputElement>(null);
+
+  // "To" account auto-suggestion, from previous transactions with a
+  // similar title (see lib/utils/classifyAccount.ts). Never runs while
+  // editing an existing transaction (its "to" is already meaningful) or
+  // once the user has picked "to" themselves for this form session — the
+  // model only ever fills in a field the user hasn't touched yet.
+  const [toManuallySet, setToManuallySet] = useState(isEdit);
+  const titleModel = useMemo(() => buildTitleAccountModel(transactions ?? []), [transactions]);
+  const suggestion = useMemo(
+    () => (toManuallySet ? null : suggestToAccount(titleModel, title)),
+    [titleModel, title, toManuallySet]
+  );
+
+  useEffect(() => {
+    if (suggestion && accounts.some(a => a.id === suggestion.accountId)) {
+      setTo(suggestion.accountId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestion]);
+
+  function handleToChange(id: string | null) {
+    setToManuallySet(true);
+    setTo(id);
+  }
+
+  // Dev-only: the full ranked list (not just the best-above-threshold
+  // suggestion) so it's possible to see what the classifier is actually
+  // scoring while tuning it — `import.meta.env.DEV` is Vite's standard
+  // dev-server flag, false in every production build (web, iOS, macOS), so
+  // this never ships to users.
+  const debugRanked = import.meta.env.DEV ? rankToAccounts(titleModel, title).slice(0, 3) : [];
 
   useEffect(() => {
     if (!groupId) { setSplitRows([]); return; }
@@ -146,6 +186,7 @@ export function TransactionForm({ accounts, groups, settings, initial, onSave, o
       setGroupId('');
       setSplitRows([]);
       setPhoto(null);
+      setToManuallySet(false);
     }
   }
 
@@ -182,7 +223,21 @@ export function TransactionForm({ accounts, groups, settings, initial, onSave, o
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="f-to">To account</Label>
-          <AccountPicker inputId="f-to" accounts={accounts} value={to} onChange={setTo} placeholder="Type or pick an account" />
+          <AccountPicker inputId="f-to" accounts={accounts} value={to} onChange={handleToChange} placeholder="Type or pick an account" />
+          {suggestion && suggestion.accountId === to && (
+            <span className="text-xs text-muted-foreground">Suggested from previous expenses — pick a different account to override.</span>
+          )}
+          {import.meta.env.DEV && debugRanked.length > 0 && (
+            <div className="mt-1 rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+              <div className="mb-1 font-medium uppercase tracking-wide">Dev: classifier suggestions</div>
+              {debugRanked.map((r, i) => (
+                <div key={r.accountId} className="flex justify-between tabular-nums">
+                  <span>{i + 1}. {accountName(accounts, r.accountId)}</span>
+                  <span>{(r.confidence * 100).toFixed(1)}%</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

@@ -537,6 +537,23 @@ config. `App.tsx` is the router's layout route — it boots the store once,
 shows a loading state until the first `PersistenceAdapter.loadInitial()`
 resolves, then renders `<Outlet />` for the active tab.
 
+`<Outlet />`'s wrapper div is `flex h-full flex-col`, not a plain block —
+that's what lets a page opt into filling `<main>`'s exact height and
+managing its own internal scroll region, rather than always relying on
+`<main>`'s own `overflow-y-auto` for the whole page. `TransactionsPage` is
+the one page that does this: its root is `flex h-full min-h-0 flex-col`,
+with the title/search/filter header as a plain (non-scrolling) flex item
+and the transaction list in its own `min-h-0 flex-1 overflow-y-auto`
+child, so the header stays put while only the list scrolls. The `min-h-0`
+on both levels matters — flex items default to `min-height: auto`, which
+for a column containing overflowing content means it just grows the
+container instead of activating its own scrollbar. Pages that don't need
+this (Report, Accounts, Budgets, Settings) are unaffected: they render at
+their natural content height as before, and any overflow still bubbles up
+to `<main>`'s scroll exactly like it did before this wrapper existed,
+since a `flex` parent with the default `overflow: visible` doesn't clip
+its children.
+
 ## Build targets
 
 | Target | Command | Output |

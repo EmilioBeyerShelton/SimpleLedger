@@ -106,55 +106,67 @@ export default function TransactionsPage() {
     : null;
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Transactions</h2>
-        {/* On mobile this collapses to the floating "+" button below,
-            hovering over the list above the bottom nav — the full-text
-            button only makes sense once BottomNav has become a top bar
-            (see BottomNav.tsx's md: variants) and there's no bottom edge
-            to float above. */}
-        <Button size="sm" className="hidden md:inline-flex" onClick={() => setShowAdd(true)}><Plus className="mr-1 h-4 w-4" />Add expense</Button>
+    // `h-full` + `min-h-0`: fills exactly the height App.tsx's `<main>`
+    // gives this page (see App.tsx's comment on its Outlet wrapper), and
+    // `min-h-0` overrides a flex item's default `min-height: auto` —
+    // without it, the list below would just grow this container to fit
+    // all its content instead of activating its own scrollbar. The header
+    // block right below is a normal (non-scrolling, non-sticky) flex
+    // item, so it can never move independently of the rest of the page —
+    // only the list section has `overflow-y-auto`.
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-col gap-4 p-4 pb-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Transactions</h2>
+          {/* On mobile this collapses to the floating "+" button below,
+              hovering over the list above the bottom nav — the full-text
+              button only makes sense once BottomNav has become a top bar
+              (see BottomNav.tsx's md: variants) and there's no bottom edge
+              to float above. */}
+          <Button size="sm" className="hidden md:inline-flex" onClick={() => setShowAdd(true)}><Plus className="mr-1 h-4 w-4" />Add expense</Button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Input placeholder="Search title, from, or to…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+          <Button variant={activeFilterCount > 0 ? 'default' : 'outline'} size="icon" className="relative shrink-0" onClick={() => setShowFilter(true)}>
+            <Filter className="h-4 w-4" />
+            {activeFilterCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground">
+                {activeFilterCount}
+              </span>
+            )}
+          </Button>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Input placeholder="Search title, from, or to…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-        <Button variant={activeFilterCount > 0 ? 'default' : 'outline'} size="icon" className="relative shrink-0" onClick={() => setShowFilter(true)}>
-          <Filter className="h-4 w-4" />
-          {activeFilterCount > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground">
-              {activeFilterCount}
-            </span>
-          )}
-        </Button>
-      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        {data.transactions.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No expenses yet. Tap "Add expense" to create your first one.</p>}
+        {data.transactions.length > 0 && filtered.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No expenses match your search or filters.</p>}
 
-      {data.transactions.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No expenses yet. Tap "Add expense" to create your first one.</p>}
-      {data.transactions.length > 0 && filtered.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No expenses match your search or filters.</p>}
-
-      <div className="flex flex-col">
-        {rows.map(row => {
-          if (row.type === 'divider') return <div key={row.key} className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{row.label}</div>;
-          if (row.type === 'day') return <div key={row.key} className="mb-1 mt-2 text-xs text-muted-foreground">{row.label}</div>;
-          const t = row.tx;
-          const link = linkByTxId.get(t.id);
-          return (
-            <button
-              key={row.key}
-              className="flex items-center justify-between gap-3 border-b py-2.5 text-left last:border-b-0 hover:bg-accent/50"
-              onClick={() => setEditingId(t.id)}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{t.title}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {accountName(data.accounts, t.from)} → {accountName(data.accounts, t.to)}
-                  {link && <> · <Badge variant="secondary" className="ml-1 align-middle">{groupName(data.groups, link.groupId)}</Badge></>}
+        <div className="flex flex-col">
+          {rows.map(row => {
+            if (row.type === 'divider') return <div key={row.key} className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{row.label}</div>;
+            if (row.type === 'day') return <div key={row.key} className="mb-1 mt-2 text-xs text-muted-foreground">{row.label}</div>;
+            const t = row.tx;
+            const link = linkByTxId.get(t.id);
+            return (
+              <button
+                key={row.key}
+                className="flex items-center justify-between gap-3 border-b py-2.5 text-left last:border-b-0 hover:bg-accent/50"
+                onClick={() => setEditingId(t.id)}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{t.title}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {accountName(data.accounts, t.from)} → {accountName(data.accounts, t.to)}
+                    {link && <> · <Badge variant="secondary" className="ml-1 align-middle">{groupName(data.groups, link.groupId)}</Badge></>}
+                  </div>
                 </div>
-              </div>
-              <div className="shrink-0 font-medium tabular-nums">{formatAmount(t.amount)}</div>
-            </button>
-          );
-        })}
+                <div className="shrink-0 font-medium tabular-nums">{formatAmount(t.amount)}</div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Floating "add expense" button — mobile only (BottomNav is a real
@@ -182,6 +194,7 @@ export default function TransactionsPage() {
             <TransactionForm
               accounts={data.accounts}
               groups={data.groups}
+              transactions={data.transactions}
               initial={editingInitial}
               onSave={patch => { updateTransaction(editingInitial.id, patch); setEditingId(null); toast('Expense updated.'); }}
               onCancel={() => setEditingId(null)}
@@ -214,6 +227,7 @@ export default function TransactionsPage() {
             accounts={data.accounts}
             groups={data.groups}
             settings={data.settings}
+            transactions={data.transactions}
             onSave={tx => { addTransaction(tx); setShowAdd(false); toast('Expense added.'); }}
             onCancel={() => setShowAdd(false)}
           />

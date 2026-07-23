@@ -44,13 +44,19 @@ export default function BudgetsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <h2 className="text-xl font-semibold">Budgets</h2>
-      <p className="text-sm text-muted-foreground">
-        A budget groups people and expenses together — give it a cap to track depletion, or leave it open just to keep a
-        shared tab. Linking an expense to a budget is informational: it doesn't move any extra money.
-      </p>
+    // Same fixed-header/scrolling-body split as TransactionsPage (see its
+    // file comment / ARCHITECTURE.md "Routing") — title/intro text stay
+    // put, budget cards + new-budget form scroll.
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-col gap-4 p-4 pb-3">
+        <h2 className="text-xl font-semibold">Budgets</h2>
+        <p className="text-sm text-muted-foreground">
+          A budget groups people and expenses together — give it a cap to track depletion, or leave it open just to keep a
+          shared tab. Linking an expense to a budget is informational: it doesn't move any extra money.
+        </p>
+      </div>
 
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
       {data.groups.length === 0 && !showNew && <p className="py-4 text-center text-sm text-muted-foreground">No budgets yet.</p>}
 
       {data.groups.map(g => {
@@ -144,6 +150,7 @@ export default function BudgetsPage() {
       ) : (
         <Button size="sm" className="self-start" onClick={() => setShowNew(true)}>+ New budget</Button>
       )}
+      </div>
     </div>
   );
 }

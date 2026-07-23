@@ -58,9 +58,15 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4">
-      <h2 className="text-xl font-semibold">Settings</h2>
+    // Same fixed-header/scrolling-body split as TransactionsPage (see its
+    // file comment / ARCHITECTURE.md "Routing") — title stays put, the
+    // Card sections scroll.
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="p-4 pb-3">
+        <h2 className="text-xl font-semibold">Settings</h2>
+      </div>
 
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-4">
       <Card>
         <CardHeader><CardTitle className="text-base">Default account</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-2">
@@ -159,6 +165,7 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
 
       <ConfirmDialog
         open={showDemoConfirm}

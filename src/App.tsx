@@ -45,7 +45,17 @@ export default function App() {
           rows would sit underneath it. Not needed at md: and up, where
           BottomNav hides itself entirely. */}
       <main className="no-scrollbar flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
-        <div className="mx-auto max-w-3xl">
+        {/* `flex h-full flex-col`, not just a plain block wrapper: it lets
+            a page (like TransactionsPage) opt into filling this exact
+            height and managing its own internal scroll region — e.g. a
+            fixed header above a scrolling list — instead of always
+            relying on `main`'s own scroll for the whole page. Pages that
+            don't need that just render at their natural content height as
+            before; any overflow still bubbles up to `main`'s
+            `overflow-y-auto` exactly like today, since a `flex` parent
+            with `overflow: visible` (the default) doesn't clip its
+            children. */}
+        <div className="mx-auto flex h-full max-w-3xl flex-col">
           <Outlet />
         </div>
       </main>
