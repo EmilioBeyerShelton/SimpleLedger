@@ -1,8 +1,10 @@
-// Port of js/components/ExpenseForm.js — the add/edit expense form, shared
-// by the Transactions page's "Add" dialog and its row-edit dialog.
-import { useEffect, useState } from 'react';
+// Port of js/components/ExpenseForm.js (renamed from this project's own
+// earlier ExpenseForm.tsx) — the add/edit transaction form, shared by the
+// Transactions page's "Add" dialog and its row-edit dialog.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Account, Group, Settings, Transaction, TransactionFormPayload } from '@/types/ledger';
-import { todayStr, splitEqually } from '@/lib/utils/ledger';
+import { todayStr, formatDate, splitEqually, accountName } from '@/lib/utils/ledger';
+import { buildTitleAccountModel, suggestToAccount, rankToAccounts } from '@/lib/utils/classifyAccount';
 import { AccountPicker } from '@/components/AccountPicker';
 import { PhotoPicker } from '@/components/PhotoPicker';
 import { Input } from '@/components/ui/input';
@@ -10,31 +12,35 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from 'lucide-react';
 
 const FALLBACK_FROM_ID = 'assets.bank_accounts.checkings';
-const FALLBACK_TO_ID = 'expenses';
 
 function defaultAccountId(accounts: Account[], preferredId: string, fallbackIndex: number): string | null {
   if (accounts.some(a => a.id === preferredId)) return preferredId;
   return accounts[fallbackIndex]?.id ?? accounts[0]?.id ?? null;
 }
 
-export interface ExpenseFormInitial extends Transaction {
+export interface TransactionFormInitial extends Transaction {
   groupId: number | null;
   splits: { member: string; amount: number }[] | null;
 }
 
-interface ExpenseFormProps {
+interface TransactionFormProps {
   accounts: Account[];
   groups: Group[];
   settings?: Settings;
-  initial?: ExpenseFormInitial | null;
+  /** Transaction history used to auto-suggest the "to" account from the
+   * title as the user types (see lib/utils/classifyAccount.ts). Optional —
+   * omit it (or pass []) to disable suggestions entirely. */
+  transactions?: Transaction[];
+  initial?: TransactionFormInitial | null;
   onSave: (payload: TransactionFormPayload) => void;
   onCancel?: () => void;
   onDelete?: () => void;
 }
 
-export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCancel, onDelete }: ExpenseFormProps) {
+export function TransactionForm({ accounts, groups, settings, transactions, initial, onSave, onCancel, onDelete }: TransactionFormProps) {
   const isEdit = !!initial;
   const preferredFromId = settings?.defaultAccountId || FALLBACK_FROM_ID;
 
@@ -42,12 +48,53 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
   const [date, setDate] = useState(initial ? initial.date : todayStr());
   const [from, setFrom] = useState<string | null>(initial ? initial.from : defaultAccountId(accounts, preferredFromId, 0));
-  const [to, setTo] = useState<string | null>(initial ? initial.to : defaultAccountId(accounts, FALLBACK_TO_ID, accounts.length > 1 ? 1 : 0));
+  // No default "to" account — unlike "from" (which defaults to the
+  // configured default account), "to" starts empty so it's either filled
+  // in by the title-classifier suggestion below or chosen explicitly by
+  // the user; it shouldn't silently default to "expenses" or whatever
+  // account happens to be second in the list.
+  const [to, setTo] = useState<string | null>(initial ? initial.to : null);
   const [groupId, setGroupId] = useState<string>(initial && initial.groupId ? String(initial.groupId) : '');
   const [photo, setPhoto] = useState<string | null>(initial?.photo ?? null);
   const [splitRows, setSplitRows] = useState<{ member: string; included: boolean; amount: number }[]>([]);
-  const [showMore, setShowMore] = useState(isEdit);
+  // Only the budget-split section lives behind "more options" now that
+  // date/accounts are always visible — default it open only when editing
+  // a transaction that's already linked to a budget, so that link is
+  // visible without an extra click; otherwise stay collapsed.
+  const [showMore, setShowMore] = useState(!!(initial && initial.groupId));
   const [error, setError] = useState('');
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
+  // "To" account auto-suggestion, from previous transactions with a
+  // similar title (see lib/utils/classifyAccount.ts). Never runs while
+  // editing an existing transaction (its "to" is already meaningful) or
+  // once the user has picked "to" themselves for this form session — the
+  // model only ever fills in a field the user hasn't touched yet.
+  const [toManuallySet, setToManuallySet] = useState(isEdit);
+  const titleModel = useMemo(() => buildTitleAccountModel(transactions ?? []), [transactions]);
+  const suggestion = useMemo(
+    () => (toManuallySet ? null : suggestToAccount(titleModel, title)),
+    [titleModel, title, toManuallySet]
+  );
+
+  useEffect(() => {
+    if (suggestion && accounts.some(a => a.id === suggestion.accountId)) {
+      setTo(suggestion.accountId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestion]);
+
+  function handleToChange(id: string | null) {
+    setToManuallySet(true);
+    setTo(id);
+  }
+
+  // Dev-only: the full ranked list (not just the best-above-threshold
+  // suggestion) so it's possible to see what the classifier is actually
+  // scoring while tuning it — `import.meta.env.DEV` is Vite's standard
+  // dev-server flag, false in every production build (web, iOS, macOS), so
+  // this never ships to users.
+  const debugRanked = import.meta.env.DEV ? rankToAccounts(titleModel, title).slice(0, 3) : [];
 
   useEffect(() => {
     if (!groupId) { setSplitRows([]); return; }
@@ -89,6 +136,25 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
     setSplitRows(rows => rows.map(r => (r.included ? { ...r, amount: shareMap[r.member] ?? 0 } : r)));
   }
 
+  function openDatePicker() {
+    const input = dateInputRef.current;
+    if (!input) return;
+    // `showPicker()` is the purpose-built API for this; fall back to
+    // `.click()` (still opens the native picker in most browsers when
+    // called from within a real click handler) for the few that don't
+    // support it yet.
+    if ('showPicker' in input && typeof input.showPicker === 'function') {
+      try {
+        input.showPicker();
+        return;
+      } catch {
+        // showPicker() throws if the input isn't connected/visible enough
+        // in some browsers — fall through to the .click() fallback.
+      }
+    }
+    input.click();
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -120,6 +186,7 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
       setGroupId('');
       setSplitRows([]);
       setPhoto(null);
+      setToManuallySet(false);
     }
   }
 
@@ -127,6 +194,53 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
 
   return (
     <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+      {/* Date reads like a heading, not a form field: subtle text (not an
+          input box) with a calendar icon, but it's still the real date
+          <input> underneath — clicking it opens the native date picker via
+          openDatePicker() rather than requiring a visible bordered field. */}
+      <button
+        type="button"
+        onClick={openDatePicker}
+        className="-mb-1 flex w-fit items-center gap-1.5 self-center text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <Calendar className="h-4 w-4" />
+        {formatDate(date) || 'Set date'}
+        <input
+          ref={dateInputRef}
+          type="date"
+          value={date}
+          onChange={e => setDate(e.target.value)}
+          className="h-0 w-0 opacity-0"
+          tabIndex={-1}
+          aria-label="Date"
+        />
+      </button>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="f-from">From account</Label>
+          <AccountPicker inputId="f-from" accounts={accounts} value={from} onChange={setFrom} placeholder="Type or pick an account" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="f-to">To account</Label>
+          <AccountPicker inputId="f-to" accounts={accounts} value={to} onChange={handleToChange} placeholder="Type or pick an account" />
+          {suggestion && suggestion.accountId === to && (
+            <span className="text-xs text-muted-foreground">Suggested from previous expenses — pick a different account to override.</span>
+          )}
+          {import.meta.env.DEV && debugRanked.length > 0 && (
+            <div className="mt-1 rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+              <div className="mb-1 font-medium uppercase tracking-wide">Dev: classifier suggestions</div>
+              {debugRanked.map((r, i) => (
+                <div key={r.accountId} className="flex justify-between tabular-nums">
+                  <span>{i + 1}. {accountName(accounts, r.accountId)}</span>
+                  <span>{(r.confidence * 100).toFixed(1)}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="f-title">Title</Label>
         <Input id="f-title" placeholder="e.g. Groceries" value={title} onChange={e => setTitle(e.target.value)} />
@@ -143,37 +257,20 @@ export function ExpenseForm({ accounts, groups, settings, initial, onSave, onCan
       </div>
 
       <Button type="button" variant="ghost" size="sm" className="justify-start px-0" onClick={() => setShowMore(s => !s)}>
-        {showMore ? '– Fewer options' : '+ Date, accounts, split with a budget'}
+        {showMore ? '– Fewer options' : '+ Split with a budget'}
       </Button>
 
       {showMore && (
         <div className="flex flex-col gap-4 rounded-md border p-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="f-date">Date</Label>
-              <Input id="f-date" type="date" value={date} onChange={e => setDate(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="f-group">Split with budget</Label>
-              <Select value={groupId || '__none'} onValueChange={v => setGroupId(v === '__none' ? '' : v)}>
-                <SelectTrigger id="f-group"><SelectValue placeholder="No split" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">No split</SelectItem>
-                  {groups.map(g => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="f-from">From account</Label>
-              <AccountPicker inputId="f-from" accounts={accounts} value={from} onChange={setFrom} placeholder="Type or pick an account" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="f-to">To account</Label>
-              <AccountPicker inputId="f-to" accounts={accounts} value={to} onChange={setTo} placeholder="Type or pick an account" />
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="f-group">Split with budget</Label>
+            <Select value={groupId || '__none'} onValueChange={v => setGroupId(v === '__none' ? '' : v)}>
+              <SelectTrigger id="f-group"><SelectValue placeholder="No split" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">No split</SelectItem>
+                {groups.map(g => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
 
           {selectedGroup && (

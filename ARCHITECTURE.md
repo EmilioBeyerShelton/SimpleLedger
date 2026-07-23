@@ -53,8 +53,9 @@ portToReact/
     components/
       ui/                    shadcn/ui primitives (button, input, dialog, select, navigation-menu, ...)
       layout/                TopBar (desktop nav + title), BottomNav (mobile nav), navTabs.ts (shared tab list)
-      AccountPicker.tsx, ExpenseForm.tsx, AccountForm.tsx, PieChart.tsx, SankeyChart.tsx
+      AccountPicker.tsx, TransactionForm.tsx, AccountForm.tsx, PieChart.tsx, SankeyChart.tsx
       PhotoPicker.tsx, PhotoCropDialog.tsx    capture -> crop -> compress -> attach (see "Expense photos")
+      ZoomableImage.tsx                        pinch/drag/wheel zoom for the photo preview dialog
     pages/                  one file per tab: Transactions, Report, Accounts, Budgets, Settings
     App.tsx                 shell: boots the store, renders TopBar/Outlet/BottomNav
     routes.tsx              react-router route table (HashRouter)
@@ -180,7 +181,7 @@ in `src/lib/db/schema.ts`, make the identical change in `main.cjs`.
 
 ### Expense photos (`PhotoPicker.tsx`, `PhotoCropDialog.tsx`, `lib/utils/image.ts`)
 
-`ExpenseForm` has an optional photo field, backed by `PhotoPicker.tsx` and
+`TransactionForm` has an optional photo field, backed by `PhotoPicker.tsx` and
 `@capacitor/camera`. Flow: **capture → crop → compress → attach.**
 
 **Capture** is a single "Add photo" button, not separate "Take
@@ -227,7 +228,15 @@ a per-platform split.
 **Display**: once attached, the photo renders as a small thumbnail with a
 compact "×" button overlaid on its top-left corner to remove it (rather
 than a separate "Remove photo" button next to it). Tapping the thumbnail
-itself opens a `Dialog` with a larger, uncropped-by-the-dialog preview.
+opens a `Dialog` with a larger preview, rendered through
+`ZoomableImage.tsx` — pinch-zoom, double-click/double-tap to toggle zoom,
+mouse-wheel zoom, and drag-to-pan once zoomed, all built directly on
+Pointer Events (no pan-and-zoom dependency, same approach as
+`ui/dialog.tsx`'s own drag-to-dismiss gesture). Its pointer handlers call
+`stopPropagation()` deliberately — without that, gestures inside it would
+also bubble up to the surrounding `DialogContent`'s drag-to-dismiss
+handler, which has no way to know a plain `<div>` wants to own the
+gesture itself, and the two would fight over the same pointer.
 
 ### Web (`web.ts`)
 
@@ -527,6 +536,23 @@ to rewrite history-API paths, and hash routing (`#/report`, `#/accounts`,
 config. `App.tsx` is the router's layout route — it boots the store once,
 shows a loading state until the first `PersistenceAdapter.loadInitial()`
 resolves, then renders `<Outlet />` for the active tab.
+
+`<Outlet />`'s wrapper div is `flex h-full flex-col`, not a plain block —
+that's what lets a page opt into filling `<main>`'s exact height and
+managing its own internal scroll region, rather than always relying on
+`<main>`'s own `overflow-y-auto` for the whole page. `TransactionsPage` is
+the one page that does this: its root is `flex h-full min-h-0 flex-col`,
+with the title/search/filter header as a plain (non-scrolling) flex item
+and the transaction list in its own `min-h-0 flex-1 overflow-y-auto`
+child, so the header stays put while only the list scrolls. The `min-h-0`
+on both levels matters — flex items default to `min-height: auto`, which
+for a column containing overflowing content means it just grows the
+container instead of activating its own scrollbar. Pages that don't need
+this (Report, Accounts, Budgets, Settings) are unaffected: they render at
+their natural content height as before, and any overflow still bubbles up
+to `<main>`'s scroll exactly like it did before this wrapper existed,
+since a `flex` parent with the default `overflow: visible` doesn't clip
+its children.
 
 ## Build targets
 

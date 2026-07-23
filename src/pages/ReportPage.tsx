@@ -117,54 +117,62 @@ export default function ReportPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <h2 className="text-xl font-semibold">Report</h2>
+    // Same fixed-header/scrolling-body split as TransactionsPage (see its
+    // file comment / ARCHITECTURE.md "Routing") — filters/controls stay
+    // put, only the chart area (which can get tall, especially Sankey)
+    // scrolls.
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-col gap-4 p-4 pb-3">
+        <h2 className="text-xl font-semibold">Report</h2>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Account</span>
-          <AccountPicker accounts={data.accounts} value={accountId} onChange={setAccountId} placeholder="Type or pick an account" />
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">Account</span>
+            <AccountPicker accounts={data.accounts} value={accountId} onChange={setAccountId} placeholder="Type or pick an account" />
+          </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={mode === 'to'} onCheckedChange={c => setMode(c ? 'to' : 'from')} />
+            Show transactions going to this account instead
+          </label>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">From date</span>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">To date</span>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            </div>
+          </div>
+
+          {chartType === 'pie' && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Group by depth — {effectiveDepth} of {maxDepth}</span>
+              <Slider min={1} max={Math.max(maxDepth, 1)} step={1} value={[effectiveDepth]} disabled={maxDepth <= 1} onValueChange={v => setDepth(v[0])} />
+            </div>
+          )}
         </div>
 
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={mode === 'to'} onCheckedChange={c => setMode(c ? 'to' : 'from')} />
-          Show transactions going to this account instead
-        </label>
+        <p className="text-sm text-muted-foreground">
+          {filtered.length} expense{filtered.length === 1 ? '' : 's'} {mode === 'from' ? 'from' : 'to'} <b className="text-foreground">{accountTitle}</b>
+          {(dateFrom || dateTo) && <> between {dateFrom || '…'} and {dateTo || '…'}</>} — total {formatAmount(total)}
+        </p>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">From date</span>
-            <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">To date</span>
-            <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-          </div>
+        <div className="flex gap-2">
+          <Button variant={chartType === 'pie' ? 'default' : 'outline'} size="sm" onClick={() => setChartType('pie')}>Pie</Button>
+          <Button variant={chartType === 'sankey' ? 'default' : 'outline'} size="sm" onClick={() => setChartType('sankey')}>Sankey (full depth)</Button>
         </div>
+      </div>
 
-        {chartType === 'pie' && (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Group by depth — {effectiveDepth} of {maxDepth}</span>
-            <Slider min={1} max={Math.max(maxDepth, 1)} step={1} value={[effectiveDepth]} disabled={maxDepth <= 1} onValueChange={v => setDepth(v[0])} />
-          </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        {chartType === 'pie' ? (
+          slices.length === 0 ? <p className="text-sm text-muted-foreground">No matching expenses.</p> : <PieChart slices={slices} />
+        ) : (
+          <SankeyChart nodes={sankeyData.nodes} links={sankeyData.links} />
         )}
       </div>
-
-      <p className="text-sm text-muted-foreground">
-        {filtered.length} expense{filtered.length === 1 ? '' : 's'} {mode === 'from' ? 'from' : 'to'} <b className="text-foreground">{accountTitle}</b>
-        {(dateFrom || dateTo) && <> between {dateFrom || '…'} and {dateTo || '…'}</>} — total {formatAmount(total)}
-      </p>
-
-      <div className="flex gap-2">
-        <Button variant={chartType === 'pie' ? 'default' : 'outline'} size="sm" onClick={() => setChartType('pie')}>Pie</Button>
-        <Button variant={chartType === 'sankey' ? 'default' : 'outline'} size="sm" onClick={() => setChartType('sankey')}>Sankey (full depth)</Button>
-      </div>
-
-      {chartType === 'pie' ? (
-        slices.length === 0 ? <p className="text-sm text-muted-foreground">No matching expenses.</p> : <PieChart slices={slices} />
-      ) : (
-        <SankeyChart nodes={sankeyData.nodes} links={sankeyData.links} />
-      )}
     </div>
   );
 }
